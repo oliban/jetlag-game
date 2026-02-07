@@ -16,6 +16,9 @@ function App() {
   const gameResult = useGameStore((s) => s.gameResult);
   const executeSeekerTurn = useGameStore((s) => s.executeSeekerTurn);
   const transitionPhase = useGameStore((s) => s.transitionPhase);
+  const playerRole = useGameStore((s) => s.playerRole);
+  const clock = useGameStore((s) => s.clock);
+  const setGameResult = useGameStore((s) => s.setGameResult);
   const rafRef = useRef<number>(0);
 
   // Game clock loop
@@ -31,13 +34,15 @@ function App() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase, tick]);
 
-  // Auto-run seeker turns during seeking phase
+  // Auto-run seeker turns during seeking phase (only when player is hider)
   const runSeekerLoop = useCallback(async () => {
+    if (playerRole !== 'hider') return;
     if (phase !== 'seeking' || isAISeeking || gameResult) return;
     await executeSeekerTurn();
-  }, [phase, isAISeeking, gameResult, executeSeekerTurn]);
+  }, [playerRole, phase, isAISeeking, gameResult, executeSeekerTurn]);
 
   useEffect(() => {
+    if (playerRole !== 'hider') return;
     if (phase !== 'seeking' || gameResult) return;
 
     // Run seeker turns with a delay between them
@@ -53,7 +58,7 @@ function App() {
       clearInterval(interval);
       clearTimeout(initialDelay);
     };
-  }, [phase, gameResult, seekerStationId, runSeekerLoop]);
+  }, [playerRole, phase, gameResult, seekerStationId, runSeekerLoop]);
 
   // Handle game result → transition to round_end
   useEffect(() => {
@@ -63,6 +68,15 @@ function App() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [gameResult, transitionPhase]);
+
+  // Seeker mode time limit: hider wins if 12 hours (720 minutes) pass
+  useEffect(() => {
+    if (playerRole !== 'seeker' || phase !== 'seeking') return;
+    if (clock.gameMinutes >= 720) {
+      setGameResult('hider_wins');
+      transitionPhase('round_end');
+    }
+  }, [playerRole, phase, clock.gameMinutes, setGameResult, transitionPhase]);
 
   return (
     <div className="w-full h-screen relative">
@@ -75,7 +89,7 @@ function App() {
       {phase === 'round_end' && <RoundEndScreen />}
 
       {/* AI thinking indicator */}
-      {isAISeeking && phase === 'seeking' && (
+      {playerRole === 'hider' && isAISeeking && phase === 'seeking' && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-full border border-gray-700 flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
           <span className="text-sm text-gray-300">AI is thinking...</span>

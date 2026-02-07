@@ -32,7 +32,7 @@ const MAX_INFO_ROUNDS = 2;
 const MAX_TOTAL_ROUNDS = 10;  // hard safety cap
 
 /** Check if a station satisfies all geometric constraints */
-function stationMatchesConstraints(
+export function stationMatchesConstraints(
   station: { lat: number; lng: number; name: string; country: string; connections: number },
   allConstraints: Constraint[],
 ): boolean {

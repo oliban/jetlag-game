@@ -19,8 +19,9 @@ describe('State Machine', () => {
     expect(canTransition('round_end', 'setup')).toBe(true);
   });
 
-  it('rejects setup → seeking (skip)', () => {
-    expect(canTransition('setup', 'seeking')).toBe(false);
+  it('allows setup → seeking (seeker mode)', () => {
+    expect(canTransition('setup', 'seeking')).toBe(true);
+    expect(transition('setup', 'seeking')).toBe('seeking');
   });
 
   it('rejects setup → round_end (skip)', () => {

@@ -7,10 +7,14 @@ export default function RoundEndScreen() {
   const gameMinutes = useGameStore((s) => s.clock.gameMinutes);
   const questionsAsked = useGameStore((s) => s.questionsAsked);
   const transitionPhase = useGameStore((s) => s.transitionPhase);
+  const playerRole = useGameStore((s) => s.playerRole);
 
   if (phase !== 'round_end' || !gameResult) return null;
 
   const seekerWon = gameResult === 'seeker_wins';
+  const playerWon =
+    (playerRole === 'hider' && !seekerWon) ||
+    (playerRole === 'seeker' && seekerWon);
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
@@ -25,10 +29,12 @@ export default function RoundEndScreen() {
         {/* Title */}
         <h2
           className={`text-2xl font-bold mb-2 ${
-            seekerWon ? 'text-red-400' : 'text-green-400'
+            playerWon ? 'text-green-400' : 'text-red-400'
           }`}
         >
-          {seekerWon ? 'The seeker found you!' : 'You stayed hidden!'}
+          {seekerWon
+            ? (playerRole === 'seeker' ? 'You found the hider!' : 'The seeker found you!')
+            : (playerRole === 'hider' ? 'You stayed hidden!' : 'The hider escaped!')}
         </h2>
 
         {/* Subtitle */}

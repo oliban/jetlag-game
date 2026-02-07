@@ -28,6 +28,8 @@ export default function GameMap() {
   const travelTo = useGameStore((s) => s.travelTo);
   const seekerStationId = useGameStore((s) => s.seekerStationId);
   const constraints = useGameStore((s) => s.constraints);
+  const playerRole = useGameStore((s) => s.playerRole);
+  const seekerTravelTo = useGameStore((s) => s.seekerTravelTo);
 
   const stations = useMemo(() => getStationList(), []);
   const connections = useMemo(() => getConnections(), []);
@@ -207,6 +209,15 @@ export default function GameMap() {
       const station = stations.find((s) => s.id === stationId);
       if (!station) return;
 
+      // Seeker mode: click adjacent station to travel
+      if (phase === 'seeking' && playerRole === 'seeker' && playerStationId) {
+        const neighbors = getNeighbors(playerStationId);
+        if (neighbors.includes(stationId)) {
+          seekerTravelTo(stationId);
+          return;
+        }
+      }
+
       if (phase === 'hiding' && playerStationId && !hidingZone) {
         const neighbors = getNeighbors(playerStationId);
         if (neighbors.includes(stationId)) {
@@ -225,7 +236,7 @@ export default function GameMap() {
         });
       setPopup({ station, neighbors: neighborIds });
     },
-    [phase, playerStationId, hidingZone, travelTo, stations, connections],
+    [phase, playerRole, playerStationId, hidingZone, travelTo, seekerTravelTo, stations, connections],
   );
 
   // Attach click handler
@@ -262,28 +273,36 @@ export default function GameMap() {
 
     logger.debug('GameMap', `Player marker: ${station.name} (${playerStationId}) [${station.lat}, ${station.lng}], existing=${!!playerMarkerRef.current}`);
 
-    if (!playerMarkerRef.current) {
-      const el = document.createElement('div');
-      el.style.width = '24px';
-      el.style.height = '24px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = '#3b82f6';
-      el.style.border = '3px solid white';
-      el.style.boxShadow = '0 0 15px rgba(59, 130, 246, 0.8)';
-      playerMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([station.lng, station.lat])
-        .addTo(map);
-      logger.info('GameMap', `Player marker CREATED at ${station.name}`);
-    } else {
-      playerMarkerRef.current.setLngLat([station.lng, station.lat]);
+    // Remove old marker when role changes (recreate with correct color)
+    if (playerMarkerRef.current) {
+      playerMarkerRef.current.remove();
+      playerMarkerRef.current = null;
     }
+
+    const isSeeker = playerRole === 'seeker';
+    const color = isSeeker ? '#ef4444' : '#3b82f6';
+    const glow = isSeeker
+      ? '0 0 15px rgba(239, 68, 68, 0.8)'
+      : '0 0 15px rgba(59, 130, 246, 0.8)';
+
+    const el = document.createElement('div');
+    el.style.width = '24px';
+    el.style.height = '24px';
+    el.style.borderRadius = '50%';
+    el.style.backgroundColor = color;
+    el.style.border = '3px solid white';
+    el.style.boxShadow = glow;
+    playerMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([station.lng, station.lat])
+      .addTo(map);
+    logger.info('GameMap', `Player marker CREATED at ${station.name} (role=${playerRole})`);
 
     map.flyTo({
       center: [station.lng, station.lat],
       zoom: Math.max(map.getZoom(), 6),
       duration: 500,
     });
-  }, [playerStationId, mapLoaded]);
+  }, [playerStationId, playerRole, mapLoaded]);
 
   // Highlight adjacent connections during hiding phase
   useEffect(() => {
@@ -324,7 +343,7 @@ export default function GameMap() {
     });
   }, [playerStationId, phase, hidingZone, mapLoaded]);
 
-  // Update seeker marker
+  // Update seeker marker (only visible when player is hider)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) {
@@ -332,9 +351,9 @@ export default function GameMap() {
       return;
     }
 
-    if (!seekerStationId || phase !== 'seeking') {
+    if (playerRole !== 'hider' || !seekerStationId || phase !== 'seeking') {
       if (seekerMarkerRef.current) {
-        logger.debug('GameMap', `Seeker marker: removing (phase=${phase}, id=${seekerStationId})`);
+        logger.debug('GameMap', `Seeker marker: removing (role=${playerRole}, phase=${phase}, id=${seekerStationId})`);
         seekerMarkerRef.current.remove();
         seekerMarkerRef.current = null;
       }
@@ -368,7 +387,7 @@ export default function GameMap() {
       seekerMarkerRef.current.setLngLat([station.lng, station.lat]);
       logger.debug('GameMap', `Seeker marker MOVED to ${station.name}`);
     }
-  }, [seekerStationId, phase, mapLoaded]);
+  }, [seekerStationId, phase, playerRole, mapLoaded]);
 
   // Update constraint overlays
   useEffect(() => {
@@ -384,6 +403,11 @@ export default function GameMap() {
     if (!map || !mapLoaded) return;
     const source = map.getSource('hiding-zone') as mapboxgl.GeoJSONSource;
     if (!source) return;
+
+    if (playerRole === 'seeker') {
+      source.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
 
     if (!hidingZone) {
       source.setData({ type: 'FeatureCollection', features: [] });
@@ -413,7 +437,7 @@ export default function GameMap() {
         geometry: { type: 'Polygon', coordinates: [coords] },
       }],
     });
-  }, [hidingZone, mapLoaded]);
+  }, [hidingZone, playerRole, mapLoaded]);
 
   return (
     <div className="relative w-full h-full">

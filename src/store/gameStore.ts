@@ -14,9 +14,16 @@ import { createSeededRandom } from '../utils/random';
 import type { Constraint } from '../engine/constraints';
 import type { CooldownTracker } from '../questions/cooldown';
 import { createCooldownTracker } from '../questions/cooldown';
-import { runSeekerTurn } from '../engine/seekerLoop';
+import { runSeekerTurn, stationMatchesConstraints } from '../engine/seekerLoop';
 import { haversineDistance } from '../engine/geo';
 import { logger } from '../engine/logger';
+import { evaluateQuestion } from '../questions/evaluators';
+import { getQuestionById, QUESTION_POOL } from '../questions/questionPool';
+import {
+  canAskCategory,
+  recordQuestion,
+  getCooldownRemaining,
+} from '../questions/cooldown';
 
 export interface QuestionEntry {
   question: string;
@@ -34,6 +41,7 @@ export interface DebugLogEntry {
 export interface GameStore {
   // Game state
   phase: GamePhase;
+  playerRole: 'hider' | 'seeker';
   playerStationId: string | null;
   hidingZone: HidingZone | null;
   clock: GameClock;
@@ -50,7 +58,7 @@ export interface GameStore {
   isAISeeking: boolean;
 
   // Actions
-  startGame: (seed?: number) => void;
+  startGame: (seedOrRole?: number | 'hider' | 'seeker', seed?: number) => void;
   travelTo: (stationId: string) => void;
   settleHere: () => void;
   setSpeed: (speed: number) => void;
@@ -67,10 +75,13 @@ export interface GameStore {
   setCooldownTracker: (tracker: CooldownTracker) => void;
   startSeeking: () => void;
   executeSeekerTurn: () => Promise<void>;
+  seekerAskQuestion: (questionId: string) => void;
+  seekerTravelTo: (stationId: string) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
   phase: 'setup',
+  playerRole: 'hider',
   playerStationId: null,
   hidingZone: null,
   clock: createGameClock(),
@@ -86,17 +97,75 @@ export const useGameStore = create<GameStore>((set, get) => ({
   apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY ?? '',
   isAISeeking: false,
 
-  startGame: (seed?: number) => {
-    const s = seed ?? Date.now();
+  startGame: (seedOrRole?: number | 'hider' | 'seeker', seed?: number) => {
+    // Parse arguments: startGame(), startGame(seed), startGame('seeker'), startGame('seeker', seed)
+    let role: 'hider' | 'seeker' = 'hider';
+    let s: number;
+    if (typeof seedOrRole === 'string') {
+      role = seedOrRole;
+      s = seed ?? Date.now();
+    } else {
+      s = seedOrRole ?? Date.now();
+    }
+
     const rng = createSeededRandom(s);
     const stations = getStations();
     const ids = Object.keys(stations);
-    const startStation = rng.pick(ids);
 
+    if (role === 'seeker') {
+      // Seeker mode: pick player start, pick AI hider far away
+      const playerStart = rng.pick(ids);
+      const playerStation = stations[playerStart];
+
+      // Pick AI hider far from player
+      let bestHider = rng.pick(ids);
+      let bestDist = 0;
+      const candidates = rng.shuffle([...ids]).slice(0, Math.min(10, ids.length));
+      for (const id of candidates) {
+        if (id === playerStart) continue;
+        const st = stations[id];
+        if (st && playerStation) {
+          const d = haversineDistance(st.lat, st.lng, playerStation.lat, playerStation.lng);
+          if (d > bestDist) {
+            bestDist = d;
+            bestHider = id;
+          }
+        }
+      }
+
+      const hiderStation = stations[bestHider];
+      logger.info('gameStore', `Seeker mode started. Player (seeker) at ${playerStation?.name} (${playerStart}), AI hider at ${hiderStation?.name} (${bestHider}), ${Math.round(bestDist)}km apart, seed=${s}`);
+
+      set({
+        phase: 'seeking',
+        playerRole: 'seeker',
+        playerStationId: playerStart,
+        hidingZone: hiderStation ? {
+          stationId: bestHider,
+          lat: hiderStation.lat,
+          lng: hiderStation.lng,
+          radius: 0.8,
+        } : null,
+        clock: createGameClock(),
+        seed: s,
+        seekerStationId: null,
+        cooldownTracker: createCooldownTracker(),
+        constraints: [],
+        questionsAsked: [],
+        gameResult: null,
+        debugLog: [],
+        isAISeeking: false,
+      });
+      return;
+    }
+
+    // Hider mode (default): existing behavior
+    const startStation = rng.pick(ids);
     logger.info('gameStore', `Game started. Hider at ${stations[startStation]?.name} (${startStation}), seed=${s}`);
 
     set({
       phase: 'hiding',
+      playerRole: 'hider',
       playerStationId: startStation,
       hidingZone: null,
       clock: createGameClock(),
@@ -160,6 +229,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Full reset
       set({
         phase: 'setup',
+        playerRole: 'hider',
         playerStationId: null,
         hidingZone: null,
         clock: createGameClock(),
@@ -336,6 +406,60 @@ export const useGameStore = create<GameStore>((set, get) => ({
           },
         ],
       });
+    }
+  },
+
+  seekerAskQuestion: (questionId: string) => {
+    const state = get();
+    if (state.phase !== 'seeking' || state.playerRole !== 'seeker') return;
+    if (!state.cooldownTracker || !state.playerStationId || !state.hidingZone) return;
+
+    const question = getQuestionById(questionId);
+    if (!question) return;
+
+    // Check if already asked
+    const alreadyAsked = state.questionsAsked.some(
+      (q) => QUESTION_POOL.find((p) => p.text === q.question)?.id === questionId
+    );
+    if (alreadyAsked) return;
+
+    // Check cooldown
+    if (!canAskCategory(state.cooldownTracker, question.category, state.clock.gameMinutes)) return;
+
+    // Evaluate
+    const result = evaluateQuestion(question, state.hidingZone.stationId, state.playerStationId);
+    const newCooldown = recordQuestion(state.cooldownTracker, question.category, state.clock.gameMinutes);
+
+    set({
+      constraints: result.constraint
+        ? [...state.constraints, result.constraint]
+        : state.constraints,
+      questionsAsked: [
+        ...state.questionsAsked,
+        { question: question.text, answer: result.answer, category: question.category },
+      ],
+      cooldownTracker: newCooldown,
+    });
+
+    logger.info('gameStore', `Seeker asked: "${question.text}" → "${result.answer}"`);
+  },
+
+  seekerTravelTo: (stationId: string) => {
+    const state = get();
+    if (state.phase !== 'seeking' || state.playerRole !== 'seeker') return;
+    if (!state.playerStationId) return;
+
+    const neighbors = getNeighbors(state.playerStationId);
+    if (!neighbors.includes(stationId)) return;
+
+    set({ playerStationId: stationId });
+    logger.info('gameStore', `Seeker traveled to ${stationId}`);
+
+    // Check win condition
+    const updated = get();
+    if (updated.hidingZone && updated.playerStationId === updated.hidingZone.stationId) {
+      logger.info('gameStore', `Seeker wins! Found hider at ${stationId}`);
+      set({ gameResult: 'seeker_wins', phase: 'round_end' });
     }
   },
 }));

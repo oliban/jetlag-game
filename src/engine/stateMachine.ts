@@ -1,7 +1,7 @@
 import type { GamePhase } from '../types/game';
 
 const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
-  setup: ['hiding'],
+  setup: ['hiding', 'seeking'],
   hiding: ['seeking'],
   seeking: ['round_end'],
   round_end: ['setup'],
