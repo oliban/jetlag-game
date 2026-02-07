@@ -76,7 +76,7 @@ describe('Game Store', () => {
 
     // Pick a station that's not adjacent
     const neighbors = new Set(getNeighbors(startStation));
-    const nonAdjacent = startStation === 'naples' ? 'london-stpancras' : 'naples';
+    const nonAdjacent = startStation === 'naples' ? 'london' : 'naples';
     expect(neighbors.has(nonAdjacent)).toBe(false);
 
     useGameStore.getState().travelTo(nonAdjacent);
@@ -124,7 +124,7 @@ describe('Game Store', () => {
   });
 
   it('travelTo does nothing in setup phase', () => {
-    useGameStore.getState().travelTo('paris-nord');
+    useGameStore.getState().travelTo('paris');
     expect(useGameStore.getState().playerStationId).toBeNull();
   });
 });

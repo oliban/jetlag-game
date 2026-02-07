@@ -31,8 +31,8 @@ describe('trainSchedule', () => {
 
   describe('computeDepartureOffset', () => {
     it('returns same offset regardless of direction', () => {
-      const ab = computeDepartureOffset('paris-nord', 'london-stpancras');
-      const ba = computeDepartureOffset('london-stpancras', 'paris-nord');
+      const ab = computeDepartureOffset('paris', 'london');
+      const ba = computeDepartureOffset('london', 'paris');
       expect(ab).toBe(ba);
     });
 
@@ -42,7 +42,7 @@ describe('trainSchedule', () => {
     });
 
     it('returns different offsets for different routes', () => {
-      const offset1 = computeDepartureOffset('paris-nord', 'london-stpancras');
+      const offset1 = computeDepartureOffset('paris', 'london');
       const offset2 = computeDepartureOffset('berlin-hbf', 'munich-hbf');
       expect(offset1).not.toBe(offset2);
     });
@@ -93,19 +93,19 @@ describe('trainSchedule', () => {
   describe('getConnectionDistance', () => {
     it('returns distance for a valid connection', () => {
       // Paris Gare du Nord ↔ London St Pancras is a known connection
-      const dist = getConnectionDistance('paris-nord', 'london-stpancras');
+      const dist = getConnectionDistance('paris', 'london');
       expect(dist).toBeGreaterThan(0);
     });
 
     it('returns null for non-adjacent stations', () => {
-      const dist = getConnectionDistance('london-stpancras', 'rome-termini');
+      const dist = getConnectionDistance('london', 'rome-termini');
       expect(dist).toBeNull();
     });
   });
 
   describe('getTravelInfo', () => {
     it('returns travel info for a valid connection', () => {
-      const info = getTravelInfo('paris-nord', 'london-stpancras', 0);
+      const info = getTravelInfo('paris', 'london', 0);
       expect(info).not.toBeNull();
       expect(info!.trainType).toBeDefined();
       expect(info!.departureTime).toBeGreaterThanOrEqual(0);
@@ -115,18 +115,18 @@ describe('trainSchedule', () => {
     });
 
     it('returns null for non-adjacent stations', () => {
-      const info = getTravelInfo('london-stpancras', 'rome-termini', 0);
+      const info = getTravelInfo('london', 'rome-termini', 0);
       expect(info).toBeNull();
     });
 
     it('wait time is non-negative', () => {
-      const info = getTravelInfo('paris-nord', 'london-stpancras', 100);
+      const info = getTravelInfo('paris', 'london', 100);
       expect(info).not.toBeNull();
       expect(info!.waitMinutes).toBeGreaterThanOrEqual(0);
     });
 
     it('arrival = departure + travel', () => {
-      const info = getTravelInfo('paris-nord', 'london-stpancras', 0);
+      const info = getTravelInfo('paris', 'london', 0);
       expect(info).not.toBeNull();
       const expected = info!.departureTime + info!.travelMinutes;
       expect(Math.abs(info!.arrivalTime - expected)).toBeLessThan(0.1);

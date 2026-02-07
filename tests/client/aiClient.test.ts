@@ -110,7 +110,7 @@ describe('AI Client - Claude Provider Helpers', () => {
 
   it('buildAssistantMessage handles empty thinking text', () => {
     const msg = buildAssistantMessage(
-      [{ id: 'call-1', name: 'travel_to', input: { station_id: 'paris-nord' } }],
+      [{ id: 'call-1', name: 'travel_to', input: { station_id: 'paris' } }],
       '',
     );
     const blocks = msg.content as Array<{ type: string }>;
@@ -123,8 +123,8 @@ describe('AI Client - Claude Provider Helpers', () => {
 describe('AI Client - State Filtering for Seeker', () => {
   const fullState: FullGameState = {
     phase: 'seeking',
-    hiderStationId: 'paris-nord',
-    hiderStationName: 'Paris Gare du Nord',
+    hiderStationId: 'paris',
+    hiderStationName: 'Paris',
     seekerStationId: 'berlin-hbf',
     seekerStationName: 'Berlin Hauptbahnhof',
     gameMinutes: 60,

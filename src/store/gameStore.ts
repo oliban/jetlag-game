@@ -328,6 +328,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       seekerTransit,
       seekerStationId,
     });
+
+    // Check win condition after player seeker arrives at a station
+    if (state.playerRole === 'seeker' && playerStationId !== state.playerStationId) {
+      const current = get();
+      if (current.hidingZone && playerStationId === current.hidingZone.stationId) {
+        logger.info('gameStore', `Seeker wins! Found hider at ${playerStationId}`);
+        set({ gameResult: 'seeker_wins' });
+      }
+    }
   },
 
   transitionPhase: (to: GamePhase) => {

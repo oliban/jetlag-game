@@ -4,8 +4,8 @@ import { filterStateForRole, type FullGameState, type SeekerViewState, type Hide
 describe('State Filter (Anti-Cheat)', () => {
   const fullState: FullGameState = {
     phase: 'seeking',
-    hiderStationId: 'paris-nord',
-    hiderStationName: 'Paris Gare du Nord',
+    hiderStationId: 'paris',
+    hiderStationName: 'Paris',
     seekerStationId: 'berlin-hbf',
     seekerStationName: 'Berlin Hauptbahnhof',
     gameMinutes: 120,
@@ -44,7 +44,7 @@ describe('State Filter (Anti-Cheat)', () => {
 
   it('hider state contains their own position', () => {
     const hiderView = filterStateForRole(fullState, 'hider') as HiderViewState;
-    expect(hiderView.hiderStationId).toBe('paris-nord');
+    expect(hiderView.hiderStationId).toBe('paris');
   });
 
   it('hider state shows hiding zone status', () => {

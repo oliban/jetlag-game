@@ -1,7 +1,5 @@
 [
-  { "id": "paris-nord", "name": "Paris Gare du Nord", "country": "France", "lat": 48.8809, "lng": 2.3553 },
-  { "id": "paris-lyon", "name": "Paris Gare de Lyon", "country": "France", "lat": 48.8443, "lng": 2.3735 },
-  { "id": "paris-est", "name": "Paris Gare de l'Est", "country": "France", "lat": 48.8763, "lng": 2.3592 },
+  { "id": "paris", "name": "Paris", "country": "France", "lat": 48.8566, "lng": 2.3522 },
   { "id": "lyon-part-dieu", "name": "Lyon Part-Dieu", "country": "France", "lat": 45.7606, "lng": 4.8600 },
   { "id": "marseille-st-charles", "name": "Marseille Saint-Charles", "country": "France", "lat": 43.3026, "lng": 5.3806 },
   { "id": "lille-europe", "name": "Lille Europe", "country": "France", "lat": 50.6389, "lng": 3.0756 },
@@ -9,8 +7,7 @@
   { "id": "bordeaux", "name": "Bordeaux Saint-Jean", "country": "France", "lat": 44.8256, "lng": -0.5562 },
   { "id": "nice", "name": "Nice Ville", "country": "France", "lat": 43.7049, "lng": 7.2620 },
 
-  { "id": "london-stpancras", "name": "London St Pancras", "country": "United Kingdom", "lat": 51.5322, "lng": -0.1260 },
-  { "id": "london-kings-cross", "name": "London King's Cross", "country": "United Kingdom", "lat": 51.5308, "lng": -0.1238 },
+  { "id": "london", "name": "London", "country": "United Kingdom", "lat": 51.5322, "lng": -0.1260 },
   { "id": "edinburgh", "name": "Edinburgh Waverley", "country": "United Kingdom", "lat": 55.9520, "lng": -3.1887 },
   { "id": "manchester", "name": "Manchester Piccadilly", "country": "United Kingdom", "lat": 53.4774, "lng": -2.2309 },
   { "id": "birmingham", "name": "Birmingham New Street", "country": "United Kingdom", "lat": 52.4778, "lng": -1.9000 },

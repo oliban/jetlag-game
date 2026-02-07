@@ -54,8 +54,8 @@ describe('Data Integrity', () => {
     }
   });
 
-  it('has at least 50 stations', () => {
-    expect(stationsData.length).toBeGreaterThanOrEqual(50);
+  it('has at least 47 stations', () => {
+    expect(stationsData.length).toBeGreaterThanOrEqual(47);
   });
 
   it('has at least 80 connections', () => {
@@ -69,9 +69,9 @@ describe('Data Integrity', () => {
 
   it('getStations counts connections correctly', () => {
     const stations = getStations();
-    // Paris Gare du Nord should have multiple connections
-    expect(stations['paris-nord'].connections).toBeGreaterThan(0);
-    // Check a specific known connection count (paris-lyon is a major hub)
-    expect(stations['paris-lyon'].connections).toBeGreaterThanOrEqual(5);
+    // Paris is a major hub with many connections
+    expect(stations['paris'].connections).toBeGreaterThanOrEqual(8);
+    // London is also a major hub
+    expect(stations['london'].connections).toBeGreaterThanOrEqual(7);
   });
 });

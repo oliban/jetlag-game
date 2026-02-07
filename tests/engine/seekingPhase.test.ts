@@ -18,8 +18,8 @@ describe('Seeking Phase', () => {
   it('seeker wins when within hiding zone radius', () => {
     // Same station = 0 distance = within 0.8km zone
     const result = checkWinCondition(
-      { lat: 48.8809, lng: 2.3553 }, // seeker at paris-nord
-      { lat: 48.8809, lng: 2.3553, radius: 0.8 }, // hiding zone at paris-nord
+      { lat: 48.8566, lng: 2.3522 }, // seeker at paris
+      { lat: 48.8566, lng: 2.3522, radius: 0.8 }, // hiding zone at paris
     );
     expect(result).toBe(true);
   });
