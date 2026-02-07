@@ -24,7 +24,7 @@ import type { SeekerViewState } from '../mcp/stateFilter.ts';
 import { checkWinCondition, checkTimeLimit } from './seekingPhase.ts';
 import { canAfford, spendCoins, getCost, type CoinBudget } from './coinSystem.ts';
 import { getTravelInfo } from './trainSchedule.ts';
-import type { SeekerTurnResult } from '../client/aiClient.ts';
+import type { SeekerTurnResult, TravelRouteEntry } from '../client/aiClient.ts';
 import { logger } from './logger.ts';
 
 const MAX_ACTIONS_PER_TURN = 4;
@@ -121,14 +121,19 @@ function buildStateMessage(
   coinBudget: CoinBudget | null,
   cooldownTracker: CooldownTracker,
   askedQuestionIds: Set<string>,
+  visitedStations?: Set<string>,
 ): string {
   const stations = getStations();
   const seekerStation = stations[seekerStationId];
   const neighbors = getNeighbors(seekerStationId);
 
+  const allVisited = new Set(visitedStations ?? []);
+  allVisited.add(seekerStationId);
+
   const candidateStations: string[] = [];
   for (const [id, s] of Object.entries(stations)) {
-    if (stationMatchesConstraints(s, constraints)) {
+    if (!stationMatchesConstraints(s, constraints)) continue;
+    if (!allVisited.has(id)) {
       candidateStations.push(`${s.name} (${id})`);
     }
   }
@@ -136,11 +141,13 @@ function buildStateMessage(
   // Build travel info for each neighbor
   const neighborInfo = neighbors.map((nId) => {
     const nStation = stations[nId];
+    const visited = allVisited.has(nId);
     const travelInfo = getTravelInfo(seekerStationId, nId, gameMinutes);
+    const tag = visited ? ' [VISITED]' : '';
     if (travelInfo) {
-      return `${nStation?.name ?? nId}: ${travelInfo.trainType}, wait ${Math.round(travelInfo.waitMinutes)}min, travel ${Math.round(travelInfo.travelMinutes)}min`;
+      return `${nStation?.name ?? nId}: ${travelInfo.trainType}, wait ${Math.round(travelInfo.waitMinutes)}min, travel ${Math.round(travelInfo.travelMinutes)}min${tag}`;
     }
-    return `${nStation?.name ?? nId}`;
+    return `${nStation?.name ?? nId}${tag}`;
   });
 
   // Available questions
@@ -154,9 +161,10 @@ function buildStateMessage(
     `Game time: ${Math.floor(gameMinutes)} minutes.`,
     coinBudget ? `Coins: ${coinBudget.remaining}/${coinBudget.total}` : '',
     `Candidate stations (${candidateStations.length}): ${candidateStations.join(', ')}`,
+    `Visited stations (${allVisited.size}): ${Array.from(allVisited).map(id => stations[id]?.name ?? id).join(', ')}`,
     `Adjacent stations:\n${neighborInfo.join('\n')}`,
     `Available questions:\n${availableQuestions.join('\n')}`,
-    'Propose ONE action: either travel_to a station or ask_question.',
+    'Propose ONE action: either travel_to a station or ask_question. Do NOT revisit stations — the hider is not there.',
   ];
 
   return parts.filter(Boolean).join('\n\n');
@@ -175,6 +183,7 @@ export async function runConsensusTurn(
   turnNumber: number,
   onAction: (action: SeekerAction) => void,
   onConsensus?: (entry: ConsensusLogEntry) => void,
+  visitedStations?: Set<string>,
 ): Promise<SeekerTurnResult & { coinBudget: CoinBudget | null; cooldownTracker: CooldownTracker }> {
   const stations = getStations();
   const systemPrompt = buildSeekerSystemPrompt();
@@ -184,6 +193,7 @@ export async function runConsensusTurn(
   let currentGameMinutes = gameMinutes;
   const newConstraints: Constraint[] = [];
   const newQuestions: Array<{ question: string; answer: string }> = [];
+  const travelRoute: TravelRouteEntry[] = [];
 
   const askedQuestionIds = new Set<string>();
   for (const q of questionsAsked) {
@@ -202,6 +212,7 @@ export async function runConsensusTurn(
       currentCoins,
       currentCooldown,
       askedQuestionIds,
+      visitedStations,
     );
 
     // Phase 1: Both seekers propose in parallel
@@ -266,6 +277,7 @@ export async function runConsensusTurn(
       }
 
       // Compute travel time
+      const fromStation = currentStation;
       const travelInfo = getTravelInfo(currentStation, action.target, currentGameMinutes);
       if (travelInfo) {
         currentGameMinutes = travelInfo.arrivalTime;
@@ -274,7 +286,30 @@ export async function runConsensusTurn(
       currentStation = action.target;
       const newStation = stations[currentStation];
       logger.info('consensusLoop', `TRAVEL: → ${newStation?.name ?? action.target}`);
-      onAction({ type: 'travel_to', stationId: action.target, success: true, message: `Traveled to ${newStation?.name ?? action.target}` });
+
+      if (travelInfo) {
+        travelRoute.push({
+          stationId: action.target,
+          fromStationId: fromStation,
+          departureTime: travelInfo.departureTime,
+          arrivalTime: travelInfo.arrivalTime,
+          trainType: travelInfo.trainType,
+        });
+      }
+
+      onAction({
+        type: 'travel_to',
+        stationId: action.target,
+        success: true,
+        message: `Traveled to ${newStation?.name ?? action.target}`,
+        travelInfo: travelInfo ? {
+          fromStationId: fromStation,
+          toStationId: action.target,
+          departureTime: travelInfo.departureTime,
+          arrivalTime: travelInfo.arrivalTime,
+          trainType: travelInfo.trainType,
+        } : undefined,
+      });
 
       // Check win
       const hiderStation = stations[hiderStationId];
@@ -293,6 +328,7 @@ export async function runConsensusTurn(
             gameResult: 'seeker_wins',
             coinBudget: currentCoins,
             cooldownTracker: currentCooldown,
+            travelRoute,
           };
         }
       }
@@ -357,8 +393,13 @@ export async function runConsensusTurn(
       gameResult: 'hider_wins',
       coinBudget: currentCoins,
       cooldownTracker: currentCooldown,
+      travelRoute,
     };
   }
+
+  // If no actions were taken, delay next action to prevent infinite restart loop
+  const actedThisTurn = newQuestions.length > 0 || currentStation !== seekerStationId;
+  const nextActionTime = actedThisTurn ? currentGameMinutes : currentGameMinutes + 15;
 
   return {
     seekerStationId: currentStation,
@@ -368,5 +409,7 @@ export async function runConsensusTurn(
     gameResult: null,
     coinBudget: currentCoins,
     cooldownTracker: currentCooldown,
+    nextActionTime,
+    travelRoute,
   };
 }

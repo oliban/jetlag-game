@@ -9,9 +9,9 @@ export function buildSeekerSystemPrompt(): string {
 - You can travel along rail connections between adjacent stations. You cannot jump to non-adjacent stations.
 
 ## STATION NETWORK
-The complete network has 50 stations across 14 countries:
-- France: Paris Gare du Nord, Paris Gare de Lyon, Paris Gare de l'Est, Lyon Part-Dieu, Marseille Saint-Charles, Lille Europe, Strasbourg, Bordeaux Saint-Jean, Nice Ville
-- UK: London St Pancras, London King's Cross, Edinburgh Waverley, Manchester Piccadilly, Birmingham New Street
+The complete network has 47 stations across 14 countries:
+- France: Paris, Lyon Part-Dieu, Marseille Saint-Charles, Lille Europe, Strasbourg, Bordeaux Saint-Jean, Nice Ville
+- UK: London, Edinburgh Waverley, Manchester Piccadilly, Birmingham New Street
 - Germany: Berlin Hauptbahnhof, München Hbf, Frankfurt (Main) Hbf, Hamburg Hbf, Köln Hbf, Stuttgart Hbf, Nürnberg Hbf, Dresden Hbf, Hannover Hbf
 - Netherlands: Amsterdam Centraal, Rotterdam Centraal, Utrecht Centraal
 - Belgium: Bruxelles-Midi, Antwerpen-Centraal, Brugge
@@ -54,13 +54,28 @@ Plan your questions carefully — spend cheap radar questions early to narrow th
 4. **travel_to** - Move to an adjacent station. You must wait for the next train and travel takes time.
 
 ## STRATEGY
-1. Start each turn by calling get_my_state, then get_available_questions.
-2. The get_my_state response includes a **candidateStations** list — these are the ONLY stations where the hider could be, computed from all constraints. ALWAYS use this list to guide your decisions.
-3. Ask available questions strategically to reduce the candidate list further. Budget coins wisely.
-4. **ONLY travel toward candidate stations.** Never travel away from the candidates region.
-5. Plan a route toward the cluster of candidate stations. If candidates are spread across regions, travel toward the region with the most candidates.
-6. The "prec-same-country" answer is relative to YOUR current country when asked.
-7. Consider train schedules: sometimes a fast express is better than multiple slow local trains.
+1. Start each turn by calling get_my_state to see your **candidateStations** list and **visitedStations** list.
+2. **candidateStations** are the ONLY stations where the hider could be. This list already excludes stations you've visited (visiting a station confirms the hider is NOT there) and stations eliminated by constraints.
+3. **NEVER revisit a station.** Adjacent stations marked [VISITED] have already been checked — the hider is not there. Always travel to UNVISITED stations.
+4. **ONLY travel toward candidate stations.** Plan a route through unvisited candidates. If candidates are clustered, travel toward the cluster.
+5. The "prec-same-country" answer is relative to YOUR current country when asked.
+6. Consider train schedules: sometimes a fast express is better than multiple slow local trains.
+7. Your goal is to systematically eliminate candidates by visiting them or asking questions. Each turn should reduce the candidate count.
+
+## QUESTION ECONOMICS — CRITICAL
+You have very few coins and very few questions. Every question must COUNT. Follow these rules strictly:
+
+1. **Only ask a question if the answer will change your travel plan.** If you have 30 candidates spread across Europe, a radar-100 ("within 100km?") will almost certainly be "No" — don't waste it. But a radar-500 might cut the candidates in half — that's valuable.
+
+2. **Ask questions from DIFFERENT positions.** A radar-500 from Paris gives totally different info than radar-500 from Berlin. Travel first, THEN ask. Never ask 2+ questions from the same station — you get diminishing returns.
+
+3. **Don't front-load all your questions.** Spread them across the game. Ask 1 question, travel several hops toward candidates, then ask another question from the new position. This maximizes the geometric information you extract.
+
+4. **Don't ask questions whose answer you can already deduce.** If radar-500 was "No" from Berlin, then radar-200 from Berlin is ALSO "No" — don't waste a coin on it. Only ask smaller radars when you've traveled closer to the boundary.
+
+5. **Save precision questions for when they matter.** "Same country?" is only useful when you're in a country WITH candidate stations. "Hub station?" is only useful when it would eliminate multiple candidates.
+
+6. **A typical good game pattern:** Turn 1: get_state → ask radar-500 → travel 2 hops. Turn 2: get_state → travel 2 hops. Turn 3: get_state → ask rel-north → travel 1 hop. Turn 4: get_state → travel toward narrowed candidates. Etc.
 
 ## RADAR QUESTION RULES
 - If radar-500 returned "No" from position A, then radar-200 and radar-100 will ALSO return "No" from any position within 300km/400km of A. Don't waste them.
@@ -70,9 +85,10 @@ Plan your questions carefully — spend cheap radar questions early to narrow th
 
 ## IMPORTANT
 - All question answers are Yes or No. Each question can only be asked ONCE per game.
-- Travel takes time. You can make multiple travel_to calls per turn but each one advances the game clock.
-- Avoid revisiting stations unless new constraints point you back in that direction.
-- Think about geography: use latitude/longitude constraints to determine direction, then travel that way.`;
+- You can call travel_to MULTIPLE TIMES to plan a multi-hop route. All hops execute as a queue without stopping. Plan 2-4 hops toward candidates in one turn.
+- NEVER revisit a station. Once visited, the hider is confirmed NOT there. Always move to unvisited candidates.
+- Think about geography: use latitude/longitude constraints to determine direction, then travel that way.
+- Each turn should make progress: either eliminate a candidate by visiting it, or narrow the search with a well-placed question.`;
 }
 
 export function buildConsensusSystemPrompt(): string {

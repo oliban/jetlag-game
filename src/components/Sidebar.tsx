@@ -30,6 +30,9 @@ export default function Sidebar() {
   const seekerMode = useGameStore((s) => s.seekerMode);
   const setHoveredRadarRadius = useGameStore((s) => s.setHoveredRadarRadius);
   const visitedStations = useGameStore((s) => s.visitedStations);
+  const seekerTransit = useGameStore((s) => s.seekerTransit);
+  const seekerNextActionTime = useGameStore((s) => s.seekerNextActionTime);
+  const seekerTravelQueue = useGameStore((s) => s.seekerTravelQueue);
 
   if (phase === 'setup' || !playerStationId) return null;
 
@@ -203,30 +206,29 @@ export default function Sidebar() {
         );
       })()}
 
-      {hidingZone && (
-        <div className="text-sm text-green-400 flex items-center gap-1 mb-3">
-          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          Hiding Zone Active
-        </div>
-      )}
-
-      {phase === 'hiding' && !hidingZone && !playerTransit && (
-        <button
-          onClick={settleHere}
-          className="w-full px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium transition-colors"
-        >
-          Settle Here
-        </button>
-      )}
-
-      {phase === 'hiding' && hidingZone && (
-        <button
-          onClick={startSeeking}
-          className="w-full px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm font-medium transition-colors"
-        >
-          Start Seeking Phase
-        </button>
-      )}
+      {/* Hiding phase: time remaining + hide button */}
+      {phase === 'hiding' && (() => {
+        const HIDING_TIME_LIMIT = 240; // 4 game-hours
+        const timeLeft = Math.max(0, Math.ceil(HIDING_TIME_LIMIT - clock.gameMinutes));
+        const hoursLeft = Math.floor(timeLeft / 60);
+        const minsLeft = timeLeft % 60;
+        const onTheTrain = playerTransit && clock.gameMinutes >= playerTransit.departureTime;
+        return (
+          <>
+            <div className="text-sm text-gray-400 mb-2">
+              Time to hide: <span className={`font-mono ${timeLeft <= 30 ? 'text-red-400 font-bold' : 'text-white'}`}>{hoursLeft}h {minsLeft.toString().padStart(2, '0')}m</span>
+            </div>
+            {!onTheTrain && (
+              <button
+                onClick={() => { settleHere(); setTimeout(() => startSeeking(), 50); }}
+                className="w-full px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium transition-colors"
+              >
+                Hide Here — Start Seeking
+              </button>
+            )}
+          </>
+        );
+      })()}
 
       {phase === 'seeking' && (
         <div className="border-t border-gray-700 pt-3 mt-1 space-y-2">
@@ -251,12 +253,55 @@ export default function Sidebar() {
             </div>
           )}
 
-          {isAISeeking && (
-            <div className="flex items-center gap-2 text-xs text-amber-400">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              {seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...'}
-            </div>
-          )}
+          {/* Seeker status — always show what the AI is doing */}
+          {(() => {
+            if (isAISeeking) {
+              return (
+                <div className="flex items-center gap-2 text-xs text-amber-400">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  {seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...'}
+                </div>
+              );
+            }
+            if (seekerTransit) {
+              const toName = stations[seekerTransit.toStationId]?.name ?? seekerTransit.toStationId;
+              const waiting = clock.gameMinutes < seekerTransit.departureTime;
+              const queueCount = seekerTravelQueue.length;
+              if (waiting) {
+                const waitLeft = Math.max(0, Math.ceil(seekerTransit.departureTime - clock.gameMinutes));
+                return (
+                  <div className="flex items-center gap-2 text-xs text-yellow-400">
+                    <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                    Waiting for train to {toName} — {waitLeft}m
+                    {queueCount > 0 && <span className="text-gray-500">(+{queueCount} hop{queueCount > 1 ? 's' : ''})</span>}
+                  </div>
+                );
+              }
+              const minsLeft = Math.max(0, Math.ceil(seekerTransit.arrivalTime - clock.gameMinutes));
+              return (
+                <div className="flex items-center gap-2 text-xs text-blue-400">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  In transit to {toName} — {minsLeft}m
+                  {queueCount > 0 && <span className="text-gray-500">(+{queueCount} hop{queueCount > 1 ? 's' : ''})</span>}
+                </div>
+              );
+            }
+            if (seekerNextActionTime > clock.gameMinutes) {
+              const minsLeft = Math.max(0, Math.ceil(seekerNextActionTime - clock.gameMinutes));
+              return (
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" />
+                  Idle — next action in {minsLeft}m
+                </div>
+              );
+            }
+            return (
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="w-2 h-2 rounded-full bg-gray-500" />
+                Ready
+              </div>
+            );
+          })()}
 
           {questionsAsked.length > 0 && (
             <div>

@@ -57,7 +57,7 @@ export interface ToolResult {
 
 export type SeekerAction =
   | { type: 'ask_question'; questionId: string; questionText: string; category: string; answer: string; constraint: Constraint | null }
-  | { type: 'travel_to'; stationId: string; success: boolean; message: string }
+  | { type: 'travel_to'; stationId: string; success: boolean; message: string; travelInfo?: { fromStationId: string; toStationId: string; departureTime: number; arrivalTime: number; trainType: string } }
   | { type: 'get_my_state'; state: SeekerViewState }
   | { type: 'get_available_questions'; questions: AvailableQuestion[] }
   | { type: 'thinking'; text: string }
@@ -67,12 +67,21 @@ export type SeekerAction =
 
 // --- Turn result ---
 
+export interface TravelRouteEntry {
+  stationId: string;
+  fromStationId: string;
+  departureTime: number;
+  arrivalTime: number;
+  trainType: string;
+}
+
 export interface SeekerTurnResult {
   seekerStationId: string;
   newConstraints: Constraint[];
   newQuestions: Array<{ question: string; answer: string }>;
   gameOver: boolean;
   gameResult: 'seeker_wins' | 'hider_wins' | null;
+  travelRoute?: TravelRouteEntry[];
 }
 
 // --- Anthropic API tool definition format ---

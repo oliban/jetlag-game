@@ -39,7 +39,7 @@ export async function sendClaudeMessage(
   conversationHistory: AnthropicMessage[],
   tools: AnthropicToolDefinition[],
 ): Promise<ClaudeTurnResult> {
-  const { apiKey, model = 'claude-sonnet-4-5-20250929', maxTokens = 1024 } = options;
+  const { apiKey, model = 'claude-sonnet-4-5-20250929', maxTokens = 2048 } = options;
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

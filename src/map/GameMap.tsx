@@ -32,6 +32,7 @@ export default function GameMap() {
   const playerRole = useGameStore((s) => s.playerRole);
   const seekerTravelTo = useGameStore((s) => s.seekerTravelTo);
   const playerTransit = useGameStore((s) => s.playerTransit);
+  const seekerTransit = useGameStore((s) => s.seekerTransit);
   const clock = useGameStore((s) => s.clock);
   const hoveredRadarRadius = useGameStore((s) => s.hoveredRadarRadius);
 
@@ -452,11 +453,30 @@ export default function GameMap() {
       // Ensure the marker wrapper has high z-index
       seekerMarkerRef.current.getElement().style.zIndex = '10';
       logger.info('GameMap', `Seeker marker CREATED at ${station.name}`);
-    } else {
+    } else if (!seekerTransit) {
+      // Only snap to station when NOT in transit — let interpolation handle transit movement
       seekerMarkerRef.current.setLngLat([station.lng, station.lat]);
       logger.debug('GameMap', `Seeker marker MOVED to ${station.name}`);
     }
-  }, [seekerStationId, phase, playerRole, mapLoaded]);
+  }, [seekerStationId, seekerTransit, phase, playerRole, mapLoaded]);
+
+  // Interpolate seeker marker position during transit
+  useEffect(() => {
+    if (!seekerTransit || !seekerMarkerRef.current) return;
+
+    const stationMap = getStations();
+    const fromStation = stationMap[seekerTransit.fromStationId];
+    const toStation = stationMap[seekerTransit.toStationId];
+    if (!fromStation || !toStation) return;
+
+    const totalDuration = seekerTransit.arrivalTime - seekerTransit.departureTime;
+    const elapsed = clock.gameMinutes - seekerTransit.departureTime;
+    const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
+    const lat = fromStation.lat + (toStation.lat - fromStation.lat) * t;
+    const lng = fromStation.lng + (toStation.lng - fromStation.lng) * t;
+
+    seekerMarkerRef.current.setLngLat([lng, lat]);
+  }, [seekerTransit, clock.gameMinutes]);
 
   // Update constraint overlays
   useEffect(() => {

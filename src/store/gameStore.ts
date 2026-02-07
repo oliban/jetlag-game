@@ -28,6 +28,7 @@ import {
 import { createCoinBudget, canAfford, spendCoins, type CoinBudget } from '../engine/coinSystem';
 import { getTravelInfo } from '../engine/trainSchedule';
 import type { ProviderConfig } from '../client/providerAdapter';
+import type { TravelRouteEntry } from '../client/aiClient';
 
 export interface QuestionEntry {
   question: string;
@@ -74,6 +75,10 @@ export interface GameStore {
   seekerMode: SeekerMode;
   seekerTurnNumber: number;
   consensusLog: ConsensusLogEntry[];
+
+  // AI seeker scheduling
+  seekerNextActionTime: number;
+  seekerTravelQueue: TravelRouteEntry[];
 
   // UI state
   hoveredRadarRadius: number | null;
@@ -133,6 +138,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   seekerMode: 'single',
   seekerTurnNumber: 0,
   consensusLog: [],
+
+  // AI seeker scheduling
+  seekerNextActionTime: 0,
+  seekerTravelQueue: [],
 
   // UI state
   hoveredRadarRadius: null,
@@ -202,6 +211,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         playerTransit: null,
         seekerTransit: null,
         seekerTurnNumber: 0,
+        seekerNextActionTime: 0,
+  seekerTravelQueue: [],
         consensusLog: [],
       });
       return;
@@ -243,6 +254,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Compute travel info
     const travelInfo = getTravelInfo(playerStationId, stationId, clock.gameMinutes);
     if (travelInfo) {
+      // Hider can't board a train that arrives after the hiding time limit
+      const HIDING_TIME_LIMIT = 240;
+      if (phase === 'hiding' && travelInfo.arrivalTime > HIDING_TIME_LIMIT) return;
+
       set({
         playerTransit: {
           fromStationId: playerStationId,
@@ -297,6 +312,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   tick: (nowMs: number) => {
     const state = get();
+    if (state.gameResult) return; // Stop clock when game is over
     const newClock = tickClock(state.clock, nowMs);
 
     // Check player transit completion
@@ -315,9 +331,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Check seeker transit completion
     let seekerTransit = state.seekerTransit;
     let seekerStationId = state.seekerStationId;
+    let seekerTravelQueue = state.seekerTravelQueue;
     if (seekerTransit && newClock.gameMinutes >= seekerTransit.arrivalTime) {
       seekerStationId = seekerTransit.toStationId;
-      seekerTransit = null;
+      // Track AI seeker's visited stations too (playerRole === 'hider' means AI is seeking)
+      if (state.playerRole === 'hider' && !visitedStations.has(seekerStationId)) {
+        visitedStations = new Set(visitedStations);
+        visitedStations.add(seekerStationId);
+      }
+      // Process travel queue: start next hop immediately
+      if (seekerTravelQueue.length > 0) {
+        const [next, ...remaining] = seekerTravelQueue;
+        seekerTransit = {
+          fromStationId: next.fromStationId,
+          toStationId: next.stationId,
+          departureTime: next.departureTime,
+          arrivalTime: next.arrivalTime,
+          trainType: next.trainType as 'express' | 'regional' | 'local',
+        };
+        seekerTravelQueue = remaining;
+      } else {
+        seekerTransit = null;
+      }
     }
 
     set({
@@ -327,6 +362,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       visitedStations,
       seekerTransit,
       seekerStationId,
+      seekerTravelQueue,
     });
 
     // Check win condition after player seeker arrives at a station
@@ -363,6 +399,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         seekerTransit: null,
         seekerMode: 'single',
         seekerTurnNumber: 0,
+        seekerNextActionTime: 0,
+  seekerTravelQueue: [],
         consensusLog: [],
       });
     } else {
@@ -440,8 +478,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({
       phase: 'seeking',
+      clock: createGameClock(),
       seekerStationId: bestStation,
-      visitedStations: new Set<string>(),
+      visitedStations: new Set<string>([bestStation]),
       cooldownTracker: createCooldownTracker(),
       constraints: [],
       questionsAsked: [],
@@ -452,6 +491,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       playerTransit: null,
       seekerTransit: null,
       seekerTurnNumber: 0,
+      seekerNextActionTime: 0,
+  seekerTravelQueue: [],
       consensusLog: [],
     });
   },
@@ -505,21 +546,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
                   },
                 ],
               });
-            } else if (action.type === 'travel_to') {
-              if (action.success) {
-                set({
-                  seekerStationId: action.stationId,
-                  debugLog: [
-                    ...current.debugLog,
-                    {
-                      timestamp: Date.now(),
-                      tool: 'travel_to',
-                      args: { station_id: action.stationId },
-                      result: { success: true, message: action.message },
-                    },
-                  ],
-                });
-              }
+            } else if (action.type === 'travel_to' && action.success) {
+              // Just log — transit queue is managed from turn result
+              set({
+                debugLog: [
+                  ...current.debugLog,
+                  {
+                    timestamp: Date.now(),
+                    tool: 'travel_to',
+                    args: { station_id: action.stationId },
+                    result: { success: true, message: action.message },
+                  },
+                ],
+              });
             } else if (action.type === 'thinking') {
               set({
                 debugLog: [
@@ -537,16 +576,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
           (entry) => {
             set((s) => ({ consensusLog: [...s.consensusLog, entry] }));
           },
+          state.visitedStations,
         );
 
-        logger.info('gameStore', `executeSeekerTurn (consensus): completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}`);
-        set({
-          seekerStationId: result.seekerStationId,
+        logger.info('gameStore', `executeSeekerTurn (consensus): completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}, nextAction=${result.nextActionTime}, route=${result.travelRoute?.length ?? 0} hops`);
+        const turnUpdates: Record<string, unknown> = {
           isAISeeking: false,
           coinBudget: result.coinBudget,
           cooldownTracker: result.cooldownTracker,
           seekerTurnNumber: state.seekerTurnNumber + 1,
-        });
+          seekerNextActionTime: result.nextActionTime ?? 0,
+        };
+        // Set up travel queue from route
+        if (result.travelRoute && result.travelRoute.length > 0) {
+          const [first, ...rest] = result.travelRoute;
+          turnUpdates.seekerTransit = {
+            fromStationId: first.fromStationId,
+            toStationId: first.stationId,
+            departureTime: first.departureTime,
+            arrivalTime: first.arrivalTime,
+            trainType: first.trainType,
+          };
+          turnUpdates.seekerTravelQueue = rest;
+        } else {
+          turnUpdates.seekerStationId = result.seekerStationId;
+        }
+        set(turnUpdates as Partial<GameStore>);
 
         if (result.gameOver && result.gameResult) {
           logger.info('gameStore', `Game over: ${result.gameResult}`);
@@ -584,21 +639,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
                   },
                 ],
               });
-            } else if (action.type === 'travel_to') {
-              if (action.success) {
-                set({
-                  seekerStationId: action.stationId,
-                  debugLog: [
-                    ...current.debugLog,
-                    {
-                      timestamp: Date.now(),
-                      tool: 'travel_to',
-                      args: { station_id: action.stationId },
-                      result: { success: true, message: action.message },
-                    },
-                  ],
-                });
-              }
+            } else if (action.type === 'travel_to' && action.success) {
+              // Just log — transit queue is managed from turn result
+              set({
+                debugLog: [
+                  ...current.debugLog,
+                  {
+                    timestamp: Date.now(),
+                    tool: 'travel_to',
+                    args: { station_id: action.stationId },
+                    result: { success: true, message: action.message },
+                  },
+                ],
+              });
             } else if (action.type === 'thinking') {
               set({
                 debugLog: [
@@ -614,17 +667,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
             }
           },
           state.coinBudget,
+          state.visitedStations,
         );
 
         // Apply final results
-        logger.info('gameStore', `executeSeekerTurn: completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}, result=${result.gameResult}`);
-        set({
-          seekerStationId: result.seekerStationId,
+        logger.info('gameStore', `executeSeekerTurn: completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}, result=${result.gameResult}, nextAction=${result.nextActionTime}, route=${result.travelRoute?.length ?? 0} hops`);
+        const singleUpdates: Record<string, unknown> = {
           isAISeeking: false,
           coinBudget: result.coinBudget ?? state.coinBudget,
           cooldownTracker: result.cooldownTracker ?? state.cooldownTracker,
           seekerTurnNumber: state.seekerTurnNumber + 1,
-        });
+          seekerNextActionTime: result.nextActionTime ?? 0,
+        };
+        // Set up travel queue from route
+        if (result.travelRoute && result.travelRoute.length > 0) {
+          const [first, ...rest] = result.travelRoute;
+          singleUpdates.seekerTransit = {
+            fromStationId: first.fromStationId,
+            toStationId: first.stationId,
+            departureTime: first.departureTime,
+            arrivalTime: first.arrivalTime,
+            trainType: first.trainType,
+          };
+          singleUpdates.seekerTravelQueue = rest;
+        } else {
+          singleUpdates.seekerStationId = result.seekerStationId;
+        }
+        set(singleUpdates as Partial<GameStore>);
 
         if (result.gameOver && result.gameResult) {
           logger.info('gameStore', `Game over: ${result.gameResult}`);

@@ -31,8 +31,8 @@ import { logger } from './logger.ts';
 import { canAfford, spendCoins, getCost, type CoinBudget } from './coinSystem.ts';
 import { getTravelInfo } from './trainSchedule.ts';
 
-const MAX_INFO_ROUNDS = 2;
-const MAX_TOTAL_ROUNDS = 10;  // hard safety cap
+const MAX_INFO_ROUNDS = 4;    // rounds where AI only gathers info (get_my_state, get_available_questions)
+const MAX_TOTAL_ROUNDS = 12;  // hard safety cap
 
 /** Check if a station satisfies all geometric constraints */
 export function stationMatchesConstraints(
@@ -84,6 +84,7 @@ export async function runSeekerTurn(
   questionsAsked: Array<{ question: string; answer: string }>,
   onAction: (action: SeekerAction) => void,
   coinBudget?: CoinBudget | null,
+  visitedStations?: Set<string>,
 ): Promise<SeekerTurnResult & { coinBudget?: CoinBudget | null; cooldownTracker?: CooldownTracker }> {
   // Support both raw API key (backward compat) and ProviderConfig
   const providerConfig: ProviderConfig = typeof apiKeyOrConfig === 'string'
@@ -100,6 +101,7 @@ export async function runSeekerTurn(
   let turnGameMinutes = gameMinutes;
   const newConstraints: Constraint[] = [];
   const newQuestions: Array<{ question: string; answer: string }> = [];
+  const travelRoute: import('../client/aiClient.ts').TravelRouteEntry[] = [];
 
   // Track asked question IDs — each question can only be asked once per game
   const askedQuestionIds = new Set<string>();
@@ -114,7 +116,7 @@ export async function runSeekerTurn(
   const conversationHistory: ConversationMessage[] = [
     {
       role: 'user',
-      content: `It is your turn. The game clock is at ${Math.floor(turnGameMinutes)} minutes. You are at station "${stations[currentSeekerStation]?.name ?? currentSeekerStation}". ${currentCoins ? `You have ${currentCoins.remaining}/${currentCoins.total} coins remaining.` : ''} Call get_my_state and get_available_questions together first, then ask questions. Travel calls advance the game clock — each hop takes real time. Travel toward candidate stations.`,
+      content: `It is your turn. The game clock is at ${Math.floor(turnGameMinutes)} minutes. You are at station "${stations[currentSeekerStation]?.name ?? currentSeekerStation}". ${currentCoins ? `You have ${currentCoins.remaining}/${currentCoins.total} coins remaining.` : ''}\n\nCall get_my_state to see your candidateStations and visitedStations. Then plan your moves.\n\nYou can call travel_to MULTIPLE TIMES to plan a multi-hop route. All hops will execute as a queue — you won't stop to think between them. Plan a full route toward candidate stations. You can also ask a question before or between travels. Always travel toward UNVISITED candidate stations.`,
     },
   ];
 
@@ -154,9 +156,12 @@ export async function runSeekerTurn(
     // Add assistant message to conversation history
     conversationHistory.push(buildAssistantMessage(result.toolCalls, result.thinkingText));
 
-    // Count this round: travel_to calls are free, everything else counts
-    const hasInfoCalls = result.toolCalls.some(tc => tc.name !== 'travel_to');
-    if (hasInfoCalls) infoRounds++;
+    // Count this round: only pure info-gathering rounds count toward the info cap.
+    // Action tools (travel_to, ask_question) don't count — those ARE the decision.
+    const isInfoOnlyRound = result.toolCalls.every(tc =>
+      tc.name === 'get_my_state' || tc.name === 'get_available_questions',
+    );
+    if (isInfoOnlyRound) infoRounds++;
     totalRounds++;
 
     // Execute each tool call
@@ -252,6 +257,7 @@ export async function runSeekerTurn(
           }
 
           // Compute travel time
+          const fromStation = currentSeekerStation;
           const travelInfo = getTravelInfo(currentSeekerStation, params.station_id, turnGameMinutes);
 
           currentSeekerStation = params.station_id;
@@ -278,11 +284,22 @@ export async function runSeekerTurn(
 
           logger.info('seekerLoop', `TRAVEL: → ${newStation?.name ?? params.station_id} (${params.station_id})${travelInfo ? ` [${travelInfo.trainType}, +${Math.round(travelInfo.totalMinutes)}min, now at ${Math.round(turnGameMinutes)}min]` : ''}`);
 
+          // Queue this hop — don't send travelInfo to onAction (store manages queue)
+          if (travelInfo) {
+            travelRoute.push({
+              stationId: params.station_id,
+              fromStationId: fromStation,
+              departureTime: travelInfo.departureTime,
+              arrivalTime: travelInfo.arrivalTime,
+              trainType: travelInfo.trainType,
+            });
+          }
+
           onAction({
             type: 'travel_to',
             stationId: params.station_id,
             success: true,
-            message: `Traveled to ${newStation?.name ?? params.station_id}`,
+            message: `Queued travel to ${newStation?.name ?? params.station_id}`,
           });
 
           // Check win condition after travel
@@ -302,6 +319,7 @@ export async function runSeekerTurn(
                 gameResult: 'seeker_wins',
                 coinBudget: currentCoins,
                 cooldownTracker: currentCooldown,
+                travelRoute,
               };
             }
           }
@@ -313,10 +331,18 @@ export async function runSeekerTurn(
           const neighbors = getNeighbors(currentSeekerStation);
           const allConstraints = [...constraints, ...newConstraints];
 
-          // Compute candidate stations that match ALL constraints
+          // Combine visited stations from store + stations visited this turn
+          const allVisited = new Set(visitedStations ?? []);
+          allVisited.add(currentSeekerStation); // current station is always visited
+
+          // Compute candidate stations that match ALL constraints, excluding visited ones
           const candidateStations: string[] = [];
+          const eliminatedByVisit: string[] = [];
           for (const [id, s] of Object.entries(stations)) {
-            if (stationMatchesConstraints(s, allConstraints)) {
+            if (!stationMatchesConstraints(s, allConstraints)) continue;
+            if (allVisited.has(id)) {
+              eliminatedByVisit.push(`${s.name} (${id})`);
+            } else {
               candidateStations.push(`${s.name} (${id})`);
             }
           }
@@ -338,7 +364,7 @@ export async function runSeekerTurn(
             }
           }
 
-          const state: SeekerViewState & { neighborTravelInfo?: Record<string, unknown>; coinBudget?: CoinBudget } = {
+          const state: Record<string, unknown> = {
             phase: 'seeking',
             seekerStationId: currentSeekerStation,
             seekerStationName: seekerStation?.name ?? currentSeekerStation,
@@ -348,6 +374,8 @@ export async function runSeekerTurn(
             availableConnections: neighbors,
             questionsAsked: [...questionsAsked, ...newQuestions],
             candidateStations,
+            visitedStations: Array.from(allVisited).map(id => stations[id]?.name ?? id),
+            eliminatedByVisit: eliminatedByVisit.length,
           };
 
           if (Object.keys(neighborTravelInfo).length > 0) {
@@ -379,9 +407,17 @@ export async function runSeekerTurn(
               affordable,
             };
           });
+          // Calculate how many more questions the AI can afford in total
+          const remainingAffordable = questions.filter(q => q.available && !askedQuestionIds.has(q.id)).length;
+          const totalQuestionsLeft = QUESTION_POOL.length - askedQuestionIds.size;
           resultContent = JSON.stringify({
             questions,
-            ...(currentCoins ? { coinBudget: currentCoins } : {}),
+            ...(currentCoins ? {
+              coinBudget: currentCoins,
+              budgetWarning: currentCoins.remaining <= 3
+                ? `WARNING: Only ${currentCoins.remaining} coins left. Every question must count. Consider whether traveling to a better position first would make a question more valuable.`
+                : `You have ${currentCoins.remaining} coins. ${remainingAffordable} questions currently affordable, ${totalQuestionsLeft} total unasked. Spend wisely — coins don't regenerate.`,
+            } : {}),
           });
           onAction({ type: 'get_available_questions', questions });
           break;
@@ -405,6 +441,8 @@ export async function runSeekerTurn(
     // Add tool results to conversation history
     conversationHistory.push(buildToolResultMessage(toolResults));
 
+
+
     // If the AI's stop reason was end_turn (not tool_use), we're done
     if (result.stopReason === 'end_turn') {
       logger.info('seekerLoop', 'AI signaled end_turn, finishing this turn');
@@ -426,7 +464,12 @@ export async function runSeekerTurn(
     };
   }
 
-  logger.info('seekerLoop', `=== TURN END === Seeker now at ${stations[currentSeekerStation]?.name}, ${newQuestions.length} questions asked, ${newConstraints.length} new constraints, game time: ${Math.round(turnGameMinutes)}min`);
+  // If the AI didn't actually do anything this turn (no travel, no questions),
+  // delay the next action to prevent an infinite restart loop.
+  const actedThisTurn = newQuestions.length > 0 || travelRoute.length > 0;
+  const nextActionTime = actedThisTurn ? turnGameMinutes : turnGameMinutes + 15;
+
+  logger.info('seekerLoop', `=== TURN END === Seeker route: ${travelRoute.map(t => stations[t.stationId]?.name ?? t.stationId).join(' → ') || '(none)'}, ${newQuestions.length} questions, game time: ${Math.round(turnGameMinutes)}min, nextAction: ${Math.round(nextActionTime)}min`);
 
   return {
     seekerStationId: currentSeekerStation,
@@ -436,5 +479,7 @@ export async function runSeekerTurn(
     gameResult: null,
     coinBudget: currentCoins,
     cooldownTracker: currentCooldown,
+    nextActionTime,
+    travelRoute,
   };
 }

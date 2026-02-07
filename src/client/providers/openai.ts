@@ -158,7 +158,7 @@ export async function sendOpenAIMessage(
   }>,
   tools: AnthropicToolDefinition[],
 ): Promise<OpenAITurnResult> {
-  const { apiKey, model = 'gpt-4o', maxTokens = 1024 } = options;
+  const { apiKey, model = 'gpt-4o', maxTokens = 2048 } = options;
 
   const openAIMessages: OpenAIMessage[] = [
     { role: 'system', content: systemPrompt },
