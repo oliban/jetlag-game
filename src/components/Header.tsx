@@ -6,6 +6,8 @@ export default function Header() {
   const clock = useGameStore((s) => s.clock);
   const setSpeed = useGameStore((s) => s.setSpeed);
   const togglePause = useGameStore((s) => s.togglePause);
+  const coinBudget = useGameStore((s) => s.coinBudget);
+  const seekerMode = useGameStore((s) => s.seekerMode);
 
   if (phase === 'setup') return null;
 
@@ -26,15 +28,24 @@ export default function Header() {
       <div className="flex items-center gap-4">
         <span className="font-mono text-sm text-gray-400">JET LAG</span>
         <span className={`font-bold text-sm ${phaseColor}`}>{phaseLabel}</span>
+        {seekerMode === 'consensus' && phase === 'seeking' && (
+          <span className="text-xs text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">DUAL SEEKERS</span>
+        )}
       </div>
 
       <div className="flex items-center gap-4">
+        {coinBudget && (
+          <span className="font-mono text-sm text-amber-400">
+            Coins: {coinBudget.remaining}/{coinBudget.total}
+          </span>
+        )}
+
         <span className="font-mono text-xl text-white">
           {formatGameTime(clock.gameMinutes)}
         </span>
 
         <div className="flex items-center gap-1">
-          {[1, 2, 4].map((speed) => (
+          {[1, 2, 5, 10].map((speed) => (
             <button
               key={speed}
               onClick={() => setSpeed(speed)}

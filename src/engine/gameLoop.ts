@@ -1,7 +1,7 @@
 export interface GameClock {
   /** Current game time in minutes */
   gameMinutes: number;
-  /** Speed multiplier (1x, 2x, 4x) */
+  /** Speed multiplier (1x, 2x, 5x, 10x) */
   speed: number;
   /** Whether clock is paused */
   paused: boolean;
@@ -44,8 +44,8 @@ export function tickClock(clock: GameClock, nowMs: number): GameClock {
 }
 
 export function setClockSpeed(clock: GameClock, speed: number): GameClock {
-  if (![1, 2, 4].includes(speed)) {
-    throw new Error(`Invalid speed: ${speed}. Must be 1, 2, or 4.`);
+  if (![1, 2, 5, 10].includes(speed)) {
+    throw new Error(`Invalid speed: ${speed}. Must be 1, 2, 5, or 10.`);
   }
   return { ...clock, speed };
 }

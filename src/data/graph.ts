@@ -48,6 +48,15 @@ export function getNeighbors(stationId: string): string[] {
   return (adj[stationId] ?? []).map((n) => n.to);
 }
 
+/** Get the distance (km) between two directly connected stations, or null if not connected */
+export function getConnectionDistance(fromId: string, toId: string): number | null {
+  const adj = buildAdjacencyList();
+  const neighbors = adj[fromId];
+  if (!neighbors) return null;
+  const edge = neighbors.find((n) => n.to === toId);
+  return edge ? edge.distance : null;
+}
+
 /** All station IDs */
 export function getStationIds(): string[] {
   return stationsData.map((s) => s.id);

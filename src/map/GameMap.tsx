@@ -6,6 +6,7 @@ import { useGameStore } from '../store/gameStore';
 import type { Station } from '../types/game';
 import { renderConstraints } from './constraintRenderer';
 import { logger } from '../engine/logger';
+import { classifyConnection } from '../engine/trainSchedule';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -30,6 +31,9 @@ export default function GameMap() {
   const constraints = useGameStore((s) => s.constraints);
   const playerRole = useGameStore((s) => s.playerRole);
   const seekerTravelTo = useGameStore((s) => s.seekerTravelTo);
+  const playerTransit = useGameStore((s) => s.playerTransit);
+  const clock = useGameStore((s) => s.clock);
+  const hoveredRadarRadius = useGameStore((s) => s.hoveredRadarRadius);
 
   const stations = useMemo(() => getStationList(), []);
   const connections = useMemo(() => getConnections(), []);
@@ -52,14 +56,15 @@ export default function GameMap() {
     mapRef.current = map;
 
     map.on('load', () => {
-      // Connection lines
+      // Connection lines — colored by train type
       const lineFeatures = connections.map((c) => {
         const fromStation = stations.find((s) => s.id === c.from);
         const toStation = stations.find((s) => s.id === c.to);
         if (!fromStation || !toStation) return null;
+        const trainType = classifyConnection(c.distance);
         return {
           type: 'Feature' as const,
-          properties: { distance: c.distance },
+          properties: { distance: c.distance, trainType },
           geometry: {
             type: 'LineString' as const,
             coordinates: [
@@ -80,9 +85,24 @@ export default function GameMap() {
         type: 'line',
         source: 'connections',
         paint: {
-          'line-color': '#4a9eff',
-          'line-opacity': 0.4,
-          'line-width': 1.5,
+          'line-color': [
+            'match', ['get', 'trainType'],
+            'express', '#eab308', // gold
+            'regional', '#3b82f6', // blue
+            '#9ca3af', // gray (local / default)
+          ],
+          'line-opacity': [
+            'match', ['get', 'trainType'],
+            'express', 0.6,
+            'regional', 0.5,
+            0.3,
+          ],
+          'line-width': [
+            'match', ['get', 'trainType'],
+            'express', 2.5,
+            'regional', 1.8,
+            1.2,
+          ],
         },
       });
 
@@ -186,6 +206,34 @@ export default function GameMap() {
         },
       }, 'station-dots');
 
+      // Radar preview circle
+      map.addSource('radar-preview', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'radar-preview-fill',
+        type: 'fill',
+        source: 'radar-preview',
+        paint: {
+          'fill-color': '#f59e0b',
+          'fill-opacity': 0.1,
+        },
+      }, 'station-dots');
+
+      map.addLayer({
+        id: 'radar-preview-outline',
+        type: 'line',
+        source: 'radar-preview',
+        paint: {
+          'line-color': '#f59e0b',
+          'line-width': 2,
+          'line-opacity': 0.6,
+          'line-dasharray': [3, 2],
+        },
+      }, 'station-dots');
+
       setMapLoaded(true);
     });
 
@@ -253,7 +301,7 @@ export default function GameMap() {
     return () => { map.off('click', 'station-dots', handler); };
   }, [mapLoaded, handleStationClick]);
 
-  // Update player marker
+  // Create/recreate player marker when station or role changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
@@ -271,9 +319,7 @@ export default function GameMap() {
       return;
     }
 
-    logger.debug('GameMap', `Player marker: ${station.name} (${playerStationId}) [${station.lat}, ${station.lng}], existing=${!!playerMarkerRef.current}`);
-
-    // Remove old marker when role changes (recreate with correct color)
+    // Remove old marker when station/role changes (recreate with correct color)
     if (playerMarkerRef.current) {
       playerMarkerRef.current.remove();
       playerMarkerRef.current = null;
@@ -304,14 +350,37 @@ export default function GameMap() {
     });
   }, [playerStationId, playerRole, mapLoaded]);
 
-  // Highlight adjacent connections during hiding phase
+  // Interpolate player marker position during transit (runs on clock tick only when in transit)
+  useEffect(() => {
+    if (!playerTransit || !playerMarkerRef.current) return;
+
+    const stationMap = getStations();
+    const fromStation = stationMap[playerTransit.fromStationId];
+    const toStation = stationMap[playerTransit.toStationId];
+    if (!fromStation || !toStation) return;
+
+    const totalDuration = playerTransit.arrivalTime - playerTransit.departureTime;
+    const elapsed = clock.gameMinutes - playerTransit.departureTime;
+    const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
+    const lat = fromStation.lat + (toStation.lat - fromStation.lat) * t;
+    const lng = fromStation.lng + (toStation.lng - fromStation.lng) * t;
+
+    playerMarkerRef.current.setLngLat([lng, lat]);
+  }, [playerTransit, clock.gameMinutes]);
+
+  // Highlight adjacent connections (hiding phase + seeker seeking phase when not in transit)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     const source = map.getSource('highlighted-connections') as mapboxgl.GeoJSONSource;
     if (!source) return;
 
-    if (phase !== 'hiding' || !playerStationId || hidingZone) {
+    // Show green lines when player can change destination (not on the train yet)
+    const onTheTrain = playerTransit && clock.gameMinutes >= playerTransit.departureTime;
+    const hiderCanTravel = phase === 'hiding' && !hidingZone && !onTheTrain;
+    const seekerCanTravel = phase === 'seeking' && playerRole === 'seeker' && !onTheTrain;
+
+    if ((!hiderCanTravel && !seekerCanTravel) || !playerStationId) {
       source.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
@@ -341,7 +410,7 @@ export default function GameMap() {
       type: 'FeatureCollection',
       features: features as GeoJSON.Feature[],
     });
-  }, [playerStationId, phase, hidingZone, mapLoaded]);
+  }, [playerStationId, phase, hidingZone, playerRole, playerTransit, clock.gameMinutes, mapLoaded]);
 
   // Update seeker marker (only visible when player is hider)
   useEffect(() => {
@@ -438,6 +507,62 @@ export default function GameMap() {
       }],
     });
   }, [hidingZone, playerRole, mapLoaded]);
+
+  // Radar preview circle on hover
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    const source = map.getSource('radar-preview') as mapboxgl.GeoJSONSource;
+    if (!source) return;
+
+    if (!hoveredRadarRadius || !playerStationId) {
+      source.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+
+    const stationMap = getStations();
+    const station = stationMap[playerStationId];
+    if (!station) {
+      source.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+
+    // Use interpolated position if in transit
+    let centerLng = station.lng;
+    let centerLat = station.lat;
+    if (playerTransit) {
+      const fromSt = stationMap[playerTransit.fromStationId];
+      const toSt = stationMap[playerTransit.toStationId];
+      if (fromSt && toSt) {
+        const totalDuration = playerTransit.arrivalTime - playerTransit.departureTime;
+        const elapsed = clock.gameMinutes - playerTransit.departureTime;
+        const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
+        centerLat = fromSt.lat + (toSt.lat - fromSt.lat) * t;
+        centerLng = fromSt.lng + (toSt.lng - fromSt.lng) * t;
+      }
+    }
+    const radiusKm = hoveredRadarRadius;
+    const points = 64;
+    const coords: [number, number][] = [];
+
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * 2 * Math.PI;
+      const dx = radiusKm * Math.cos(angle);
+      const dy = radiusKm * Math.sin(angle);
+      const lat = centerLat + (dy / 111.32);
+      const lng = centerLng + (dx / (111.32 * Math.cos(centerLat * Math.PI / 180)));
+      coords.push([lng, lat]);
+    }
+
+    source.setData({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [coords] },
+      }],
+    });
+  }, [hoveredRadarRadius, playerStationId, playerTransit, clock.gameMinutes, mapLoaded]);
 
   return (
     <div className="relative w-full h-full">

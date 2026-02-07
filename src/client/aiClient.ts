@@ -60,7 +60,10 @@ export type SeekerAction =
   | { type: 'travel_to'; stationId: string; success: boolean; message: string }
   | { type: 'get_my_state'; state: SeekerViewState }
   | { type: 'get_available_questions'; questions: AvailableQuestion[] }
-  | { type: 'thinking'; text: string };
+  | { type: 'thinking'; text: string }
+  | { type: 'proposal'; seekerId: string; actionType: string; target: string; reasoning: string }
+  | { type: 'consensus_reached'; method: string; actionType: string; target: string }
+  | { type: 'discussion'; seekerId: string; revised: boolean };
 
 // --- Turn result ---
 

@@ -15,6 +15,18 @@ export interface Connection {
   distance: number;
 }
 
+export type TrainType = 'express' | 'regional' | 'local';
+
+export interface TransitState {
+  fromStationId: string;
+  toStationId: string;
+  departureTime: number; // game minutes
+  arrivalTime: number; // game minutes
+  trainType: TrainType;
+}
+
+export type SeekerMode = 'single' | 'consensus';
+
 export type Role = 'hider' | 'seeker';
 
 export type GamePhase =

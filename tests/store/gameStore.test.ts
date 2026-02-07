@@ -41,7 +41,7 @@ describe('Game Store', () => {
     expect(station1).toBe(station2);
   });
 
-  it('travelTo moves to adjacent station', () => {
+  it('travelTo initiates transit to adjacent station', () => {
     const { startGame } = useGameStore.getState();
     startGame(42);
     const startStation = useGameStore.getState().playerStationId!;
@@ -49,7 +49,24 @@ describe('Game Store', () => {
     expect(neighbors.length).toBeGreaterThan(0);
 
     useGameStore.getState().travelTo(neighbors[0]);
+    // Player should now be in transit (not yet arrived)
+    const state = useGameStore.getState();
+    expect(state.playerTransit).not.toBeNull();
+    expect(state.playerTransit!.toStationId).toBe(neighbors[0]);
+    // Station hasn't changed yet — still at start
+    expect(state.playerStationId).toBe(startStation);
+
+    // Simulate transit completion by advancing game clock past arrival time
+    // tick() checks if gameMinutes >= arrivalTime and completes transit
+    const arrivalTime = state.playerTransit!.arrivalTime;
+    useGameStore.setState({
+      clock: { ...state.clock, gameMinutes: arrivalTime + 1, lastTimestamp: null },
+    });
+    // Call tick with current time — since lastTimestamp is null, it just sets it
+    // but the transit check uses the already-set gameMinutes
+    useGameStore.getState().tick(performance.now());
     expect(useGameStore.getState().playerStationId).toBe(neighbors[0]);
+    expect(useGameStore.getState().playerTransit).toBeNull();
   });
 
   it('travelTo rejects non-adjacent stations', () => {

@@ -1,8 +1,15 @@
 import { useGameStore } from '../store/gameStore';
-import { getStations, getNeighbors } from '../data/graph';
+import { getStations } from '../data/graph';
 import { QUESTION_POOL } from '../questions/questionPool';
 import { canAskCategory, getCooldownRemaining } from '../questions/cooldown';
 import { stationMatchesConstraints } from '../engine/seekerLoop';
+import { canAfford, getCost } from '../engine/coinSystem';
+
+const TRAIN_TYPE_COLORS: Record<string, string> = {
+  express: 'text-yellow-400',
+  regional: 'text-blue-400',
+  local: 'text-gray-400',
+};
 
 export default function Sidebar() {
   const phase = useGameStore((s) => s.phase);
@@ -18,7 +25,11 @@ export default function Sidebar() {
   const cooldownTracker = useGameStore((s) => s.cooldownTracker);
   const clock = useGameStore((s) => s.clock);
   const seekerAskQuestion = useGameStore((s) => s.seekerAskQuestion);
-  const seekerTravelTo = useGameStore((s) => s.seekerTravelTo);
+  const coinBudget = useGameStore((s) => s.coinBudget);
+  const playerTransit = useGameStore((s) => s.playerTransit);
+  const seekerMode = useGameStore((s) => s.seekerMode);
+  const setHoveredRadarRadius = useGameStore((s) => s.setHoveredRadarRadius);
+  const visitedStations = useGameStore((s) => s.visitedStations);
 
   if (phase === 'setup' || !playerStationId) return null;
 
@@ -28,15 +39,15 @@ export default function Sidebar() {
 
   // Seeker mode sidebar
   if (playerRole === 'seeker' && phase === 'seeking') {
-    const neighbors = getNeighbors(playerStationId);
-
-    // Count candidate stations matching all constraints
-    const candidateCount = Object.entries(stations).filter(([, st]) =>
+    // Candidate stations matching all constraints, excluding visited
+    const candidates = Object.entries(stations).filter(([id, st]) =>
+      !visitedStations.has(id) &&
       stationMatchesConstraints(
         { lat: st.lat, lng: st.lng, name: st.name, country: st.country, connections: st.connections },
         constraints,
       ),
-    ).length;
+    );
+    const candidateCount = candidates.length;
 
     // Check which questions have been asked
     const askedQuestionIds = new Set(
@@ -45,6 +56,8 @@ export default function Sidebar() {
         .filter(Boolean),
     );
 
+    const inTransit = !!playerTransit;
+
     return (
       <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700 min-w-[260px] max-h-[80vh] overflow-y-auto">
         {/* Your Station */}
@@ -52,28 +65,47 @@ export default function Sidebar() {
         <p className="font-bold text-amber-400">{currentStation?.name ?? playerStationId}</p>
         <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
 
+        {/* Transit indicator */}
+        {inTransit && playerTransit && (() => {
+          const waiting = clock.gameMinutes < playerTransit.departureTime;
+          const waitLeft = Math.ceil(playerTransit.departureTime - clock.gameMinutes);
+          const travelLeft = Math.ceil(playerTransit.arrivalTime - Math.max(clock.gameMinutes, playerTransit.departureTime));
+          return (
+            <div className={`${waiting ? 'bg-yellow-900/50 border-yellow-700' : 'bg-blue-900/50 border-blue-700'} border rounded p-2 mb-3`}>
+              <p className={`text-xs font-medium ${waiting ? 'text-yellow-400' : 'text-blue-400'}`}>
+                {waiting ? 'Waiting for Departure' : 'In Transit'}
+              </p>
+              <p className="text-xs text-gray-300">
+                To: {stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
+              </p>
+              <p className="text-xs text-gray-400">
+                <span className={TRAIN_TYPE_COLORS[playerTransit.trainType]}>{playerTransit.trainType}</span>
+                {waiting
+                  ? <>{' '}— Departs in {waitLeft}min, then {travelLeft}min travel</>
+                  : <>{' '}— Arriving in {Math.ceil(playerTransit.arrivalTime - clock.gameMinutes)}min</>
+                }
+              </p>
+            </div>
+          );
+        })()}
+
+        {/* Coin budget */}
+        {coinBudget && (
+          <div className="text-sm text-amber-400 mb-2">
+            Coins: {coinBudget.remaining}/{coinBudget.total}
+          </div>
+        )}
+
         {/* Candidates */}
         <div className="text-sm text-cyan-400 mb-3">
-          {candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining
-        </div>
-
-        {/* Travel */}
-        <div className="border-t border-gray-700 pt-3 mb-3">
-          <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">Travel</h3>
-          <div className="flex flex-wrap gap-1">
-            {neighbors.map((nId) => {
-              const nStation = stations[nId];
-              return (
-                <button
-                  key={nId}
-                  onClick={() => seekerTravelTo(nId)}
-                  className="px-2 py-1 text-xs text-amber-400 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 transition-colors"
-                >
-                  {nStation?.name ?? nId}
-                </button>
-              );
-            })}
-          </div>
+          <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining</p>
+          {candidateCount > 0 && candidateCount < 6 && (
+            <ul className="mt-1 text-xs text-cyan-300/80 space-y-0.5">
+              {candidates.map(([id, st]) => (
+                <li key={id}>• {st.name}</li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Ask Question */}
@@ -92,6 +124,8 @@ export default function Sidebar() {
                 cooldownTracker
                   ? getCooldownRemaining(cooldownTracker, q.category, clock.gameMinutes)
                   : 0;
+              const cost = getCost(q.category);
+              const affordable = coinBudget ? canAfford(coinBudget, q.category) : true;
 
               if (wasAsked && askedEntry) {
                 return (
@@ -105,8 +139,17 @@ export default function Sidebar() {
               if (!canAsk && cooldownLeft > 0) {
                 return (
                   <div key={q.id} className="text-xs">
-                    <p className="text-gray-500">{q.text}</p>
+                    <p className="text-gray-500">{q.text} <span className="text-gray-600">({cost} coin{cost > 1 ? 's' : ''})</span></p>
                     <p className="text-gray-600">Cooldown: {Math.ceil(cooldownLeft)}m</p>
+                  </div>
+                );
+              }
+
+              if (!affordable) {
+                return (
+                  <div key={q.id} className="text-xs">
+                    <p className="text-gray-500">{q.text} <span className="text-red-400/60">({cost} coin{cost > 1 ? 's' : ''})</span></p>
+                    <p className="text-red-400/60">Can't afford</p>
                   </div>
                 );
               }
@@ -115,9 +158,11 @@ export default function Sidebar() {
                 <button
                   key={q.id}
                   onClick={() => seekerAskQuestion(q.id)}
+                  onMouseEnter={() => q.category === 'radar' && q.param && setHoveredRadarRadius(q.param)}
+                  onMouseLeave={() => q.category === 'radar' && setHoveredRadarRadius(null)}
                   className="w-full text-left px-2 py-1 text-xs text-white bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 transition-colors"
                 >
-                  {q.text}
+                  {q.text} <span className="text-amber-400/80">({cost} coin{cost > 1 ? 's' : ''})</span>
                 </button>
               );
             })}
@@ -127,12 +172,36 @@ export default function Sidebar() {
     );
   }
 
-  // Hider mode sidebar (unchanged)
+  // Hider mode sidebar
   return (
     <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700 min-w-[220px]">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
       <p className="font-bold text-amber-400">{currentStation?.name ?? playerStationId}</p>
       <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+
+      {/* Transit indicator for hider */}
+      {playerTransit && (() => {
+        const waiting = clock.gameMinutes < playerTransit.departureTime;
+        const waitLeft = Math.ceil(playerTransit.departureTime - clock.gameMinutes);
+        const travelLeft = Math.ceil(playerTransit.arrivalTime - Math.max(clock.gameMinutes, playerTransit.departureTime));
+        return (
+          <div className={`${waiting ? 'bg-yellow-900/50 border-yellow-700' : 'bg-blue-900/50 border-blue-700'} border rounded p-2 mb-3`}>
+            <p className={`text-xs font-medium ${waiting ? 'text-yellow-400' : 'text-blue-400'}`}>
+              {waiting ? 'Waiting for Departure' : 'In Transit'}
+            </p>
+            <p className="text-xs text-gray-300">
+              To: {stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
+            </p>
+            <p className="text-xs text-gray-400">
+              <span className={TRAIN_TYPE_COLORS[playerTransit.trainType]}>{playerTransit.trainType}</span>
+              {waiting
+                ? <>{' '}— Departs in {waitLeft}min, then {travelLeft}min travel</>
+                : <>{' '}— Arriving in {Math.ceil(playerTransit.arrivalTime - clock.gameMinutes)}min</>
+              }
+            </p>
+          </div>
+        );
+      })()}
 
       {hidingZone && (
         <div className="text-sm text-green-400 flex items-center gap-1 mb-3">
@@ -141,7 +210,7 @@ export default function Sidebar() {
         </div>
       )}
 
-      {phase === 'hiding' && !hidingZone && (
+      {phase === 'hiding' && !hidingZone && !playerTransit && (
         <button
           onClick={settleHere}
           className="w-full px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium transition-colors"
@@ -170,10 +239,22 @@ export default function Sidebar() {
             </div>
           )}
 
+          {seekerMode === 'consensus' && (
+            <div className="text-xs text-purple-400">
+              Dual seekers (consensus mode)
+            </div>
+          )}
+
+          {coinBudget && (
+            <div className="text-xs text-amber-400">
+              Seeker coins: {coinBudget.remaining}/{coinBudget.total}
+            </div>
+          )}
+
           {isAISeeking && (
             <div className="flex items-center gap-2 text-xs text-amber-400">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              AI is thinking...
+              {seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...'}
             </div>
           )}
 

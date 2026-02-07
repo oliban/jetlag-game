@@ -19,12 +19,18 @@ const TOOL_COLORS: Record<string, string> = {
   ask_question: 'text-blue-400',
   move_seeker: 'text-green-400',
   declare_found: 'text-red-400',
+  thinking: 'text-purple-400',
+  travel_to: 'text-green-400',
+  error: 'text-red-400',
 };
 
 export default function DebugPanel() {
   const debugLog = useGameStore((s) => s.debugLog);
+  const consensusLog = useGameStore((s) => s.consensusLog);
+  const seekerMode = useGameStore((s) => s.seekerMode);
   const [visible, setVisible] = useState(false);
   const [filter, setFilter] = useState<string>('all');
+  const [tab, setTab] = useState<'log' | 'consensus'>('log');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Toggle with 'D' key
@@ -50,7 +56,7 @@ export default function DebugPanel() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [debugLog]);
+  }, [debugLog, consensusLog]);
 
   if (!visible) return null;
 
@@ -62,20 +68,40 @@ export default function DebugPanel() {
     <div className="absolute top-12 left-4 z-20 w-96 max-h-[70vh] flex flex-col bg-gray-950/95 backdrop-blur border border-gray-700 rounded-lg shadow-xl font-mono text-xs">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
-        <span className="text-gray-300 font-semibold">AI Debug Log</span>
         <div className="flex items-center gap-2">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="bg-gray-800 text-gray-300 border border-gray-600 rounded px-1 py-0.5 text-xs"
-          >
-            <option value="all">All</option>
-            {toolNames.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <span className="text-gray-300 font-semibold">AI Debug</span>
+          {seekerMode === 'consensus' && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => setTab('log')}
+                className={`px-2 py-0.5 rounded text-xs ${tab === 'log' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Log
+              </button>
+              <button
+                onClick={() => setTab('consensus')}
+                className={`px-2 py-0.5 rounded text-xs ${tab === 'consensus' ? 'bg-purple-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Consensus
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {tab === 'log' && (
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="bg-gray-800 text-gray-300 border border-gray-600 rounded px-1 py-0.5 text-xs"
+            >
+              <option value="all">All</option>
+              {toolNames.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => setVisible(false)}
             className="text-gray-500 hover:text-white"
@@ -85,43 +111,103 @@ export default function DebugPanel() {
         </div>
       </div>
 
-      {/* Entries */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-2">
-        {filtered.length === 0 ? (
-          <p className="text-gray-600 text-center py-4">No entries</p>
-        ) : (
-          filtered.map((entry, i) => {
-            const toolColor = TOOL_COLORS[entry.tool] ?? 'text-amber-400';
-            return (
-              <div
-                key={i}
-                className="border border-gray-800 rounded p-2 bg-gray-900/50"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`font-semibold ${toolColor}`}>
-                    {entry.tool}
-                  </span>
-                  <span className="text-gray-600">
-                    {formatTimestamp(entry.timestamp)}
-                  </span>
+      {/* Log tab */}
+      {tab === 'log' && (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-2">
+          {filtered.length === 0 ? (
+            <p className="text-gray-600 text-center py-4">No entries</p>
+          ) : (
+            filtered.map((entry, i) => {
+              const toolColor = TOOL_COLORS[entry.tool] ?? 'text-amber-400';
+              return (
+                <div
+                  key={i}
+                  className="border border-gray-800 rounded p-2 bg-gray-900/50"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`font-semibold ${toolColor}`}>
+                      {entry.tool}
+                    </span>
+                    <span className="text-gray-600">
+                      {formatTimestamp(entry.timestamp)}
+                    </span>
+                  </div>
+                  {entry.args && (
+                    <div>
+                      <span className="text-gray-500">args:</span>
+                      <JsonBlock data={entry.args} />
+                    </div>
+                  )}
+                  {entry.result !== undefined && (
+                    <div className="mt-1">
+                      <span className="text-gray-500">result:</span>
+                      <JsonBlock data={entry.result} />
+                    </div>
+                  )}
                 </div>
-                {entry.args && (
-                  <div>
-                    <span className="text-gray-500">args:</span>
-                    <JsonBlock data={entry.args} />
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* Consensus tab */}
+      {tab === 'consensus' && (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-2">
+          {consensusLog.length === 0 ? (
+            <p className="text-gray-600 text-center py-4">No consensus entries</p>
+          ) : (
+            consensusLog.map((entry, i) => {
+              const methodColor = {
+                agreement: 'text-green-400',
+                discussion: 'text-yellow-400',
+                tiebreaker: 'text-red-400',
+              }[entry.result.method] ?? 'text-gray-400';
+
+              return (
+                <div
+                  key={i}
+                  className="border border-gray-800 rounded p-2 bg-gray-900/50"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-purple-400 font-semibold">
+                      Action #{entry.turnAction + 1}
+                    </span>
+                    <span className={`text-xs ${methodColor}`}>
+                      {entry.result.method}
+                    </span>
                   </div>
-                )}
-                {entry.result !== undefined && (
-                  <div className="mt-1">
-                    <span className="text-gray-500">result:</span>
-                    <JsonBlock data={entry.result} />
+                  <div className="space-y-1 text-xs">
+                    <div>
+                      <span className="text-blue-400">Seeker A:</span>{' '}
+                      <span className="text-gray-300">{entry.proposalA.actionType} → {entry.proposalA.target}</span>
+                      <p className="text-gray-500 ml-4 truncate">{entry.proposalA.reasoning}</p>
+                    </div>
+                    <div>
+                      <span className="text-orange-400">Seeker B:</span>{' '}
+                      <span className="text-gray-300">{entry.proposalB.actionType} → {entry.proposalB.target}</span>
+                      <p className="text-gray-500 ml-4 truncate">{entry.proposalB.reasoning}</p>
+                    </div>
+                    {entry.revisedA && (
+                      <div className="text-gray-500">
+                        Revised A: {entry.revisedA.actionType} → {entry.revisedA.target}
+                      </div>
+                    )}
+                    {entry.revisedB && (
+                      <div className="text-gray-500">
+                        Revised B: {entry.revisedB.actionType} → {entry.revisedB.target}
+                      </div>
+                    )}
+                    <div className={`font-medium ${methodColor}`}>
+                      Result: {entry.result.action.actionType} → {entry.result.action.target}
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

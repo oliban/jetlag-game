@@ -1,5 +1,6 @@
 import type { Role } from '../types/game';
 import type { Constraint } from '../engine/constraints';
+import type { CoinBudget } from '../engine/coinSystem';
 
 export interface SeekerViewState {
   phase: string;
@@ -13,6 +14,8 @@ export interface SeekerViewState {
   questionsAsked: Array<{ question: string; answer: string }>;
   /** Stations that match ALL current constraints (computed server-side) */
   candidateStations?: string[];
+  /** Coin budget for question costs */
+  coinBudget?: CoinBudget;
 }
 
 export interface HiderViewState {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GamePhase, HidingZone } from '../types/game';
+import type { GamePhase, HidingZone, TransitState, SeekerMode } from '../types/game';
 import { canTransition } from '../engine/stateMachine';
 import {
   createGameClock,
@@ -15,6 +15,7 @@ import type { Constraint } from '../engine/constraints';
 import type { CooldownTracker } from '../questions/cooldown';
 import { createCooldownTracker } from '../questions/cooldown';
 import { runSeekerTurn, stationMatchesConstraints } from '../engine/seekerLoop';
+import { runConsensusTurn, type ConsensusLogEntry } from '../engine/consensusLoop';
 import { haversineDistance } from '../engine/geo';
 import { logger } from '../engine/logger';
 import { evaluateQuestion } from '../questions/evaluators';
@@ -24,6 +25,9 @@ import {
   recordQuestion,
   getCooldownRemaining,
 } from '../questions/cooldown';
+import { createCoinBudget, canAfford, spendCoins, type CoinBudget } from '../engine/coinSystem';
+import { getTravelInfo } from '../engine/trainSchedule';
+import type { ProviderConfig } from '../client/providerAdapter';
 
 export interface QuestionEntry {
   question: string;
@@ -47,8 +51,13 @@ export interface GameStore {
   clock: GameClock;
   seed: number;
 
+  // Transit state
+  playerTransit: TransitState | null;
+  seekerTransit: TransitState | null;
+
   // Seeking phase state
   seekerStationId: string | null;
+  visitedStations: Set<string>;
   constraints: Constraint[];
   questionsAsked: QuestionEntry[];
   cooldownTracker: CooldownTracker | null;
@@ -57,7 +66,20 @@ export interface GameStore {
   apiKey: string;
   isAISeeking: boolean;
 
+  // Coin system
+  coinBudget: CoinBudget | null;
+
+  // Dual seeker / consensus
+  openaiApiKey: string;
+  seekerMode: SeekerMode;
+  seekerTurnNumber: number;
+  consensusLog: ConsensusLogEntry[];
+
+  // UI state
+  hoveredRadarRadius: number | null;
+
   // Actions
+  setHoveredRadarRadius: (radius: number | null) => void;
   startGame: (seedOrRole?: number | 'hider' | 'seeker', seed?: number) => void;
   travelTo: (stationId: string) => void;
   settleHere: () => void;
@@ -66,6 +88,7 @@ export interface GameStore {
   tick: (nowMs: number) => void;
   transitionPhase: (to: GamePhase) => void;
   setApiKey: (key: string) => void;
+  setOpenaiApiKey: (key: string) => void;
   addConstraint: (constraint: Constraint) => void;
   addQuestion: (entry: QuestionEntry) => void;
   addDebugLog: (entry: DebugLogEntry) => void;
@@ -87,8 +110,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clock: createGameClock(),
   seed: Date.now(),
 
+  // Transit
+  playerTransit: null,
+  seekerTransit: null,
+
   // Seeking phase state
   seekerStationId: null,
+  visitedStations: new Set<string>(),
   constraints: [],
   questionsAsked: [],
   cooldownTracker: null,
@@ -96,6 +124,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
   debugLog: [],
   apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY ?? '',
   isAISeeking: false,
+
+  // Coins
+  coinBudget: null,
+
+  // Dual seeker / consensus
+  openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY ?? '',
+  seekerMode: 'single',
+  seekerTurnNumber: 0,
+  consensusLog: [],
+
+  // UI state
+  hoveredRadarRadius: null,
+
+  setHoveredRadarRadius: (radius: number | null) => set({ hoveredRadarRadius: radius }),
 
   startGame: (seedOrRole?: number | 'hider' | 'seeker', seed?: number) => {
     // Parse arguments: startGame(), startGame(seed), startGame('seeker'), startGame('seeker', seed)
@@ -149,17 +191,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
         clock: createGameClock(),
         seed: s,
         seekerStationId: null,
+        visitedStations: new Set([playerStart]),
         cooldownTracker: createCooldownTracker(),
         constraints: [],
         questionsAsked: [],
         gameResult: null,
         debugLog: [],
         isAISeeking: false,
+        coinBudget: createCoinBudget(),
+        playerTransit: null,
+        seekerTransit: null,
+        seekerTurnNumber: 0,
+        consensusLog: [],
       });
       return;
     }
 
     // Hider mode (default): existing behavior
+    const state = get();
+    const hasBothKeys = state.apiKey.trim() !== '' && state.openaiApiKey.trim() !== '';
+
     const startStation = rng.pick(ids);
     logger.info('gameStore', `Game started. Hider at ${stations[startStation]?.name} (${startStation}), seed=${s}`);
 
@@ -170,32 +221,58 @@ export const useGameStore = create<GameStore>((set, get) => ({
       hidingZone: null,
       clock: createGameClock(),
       seed: s,
+      seekerMode: hasBothKeys ? 'consensus' : 'single',
+      playerTransit: null,
+      seekerTransit: null,
+      seekerTurnNumber: 0,
+      consensusLog: [],
     });
   },
 
   travelTo: (stationId: string) => {
-    const { phase, playerStationId, hidingZone } = get();
+    const { phase, playerStationId, hidingZone, playerTransit, clock } = get();
     if (phase !== 'hiding') return;
     if (hidingZone) return; // Already settled
     if (!playerStationId) return;
+    // Block if already on the train (past departure), but allow changing while waiting
+    if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) return;
 
     const neighbors = getNeighbors(playerStationId);
     if (!neighbors.includes(stationId)) return;
 
-    set({ playerStationId: stationId });
+    // Compute travel info
+    const travelInfo = getTravelInfo(playerStationId, stationId, clock.gameMinutes);
+    if (travelInfo) {
+      set({
+        playerTransit: {
+          fromStationId: playerStationId,
+          toStationId: stationId,
+          departureTime: travelInfo.departureTime,
+          arrivalTime: travelInfo.arrivalTime,
+          trainType: travelInfo.trainType,
+        },
+      });
+    } else {
+      // Fallback: instant travel if no travel info
+      set({ playerStationId: stationId });
+    }
   },
 
   settleHere: () => {
-    const { phase, playerStationId, hidingZone } = get();
+    const { phase, playerStationId, hidingZone, playerTransit } = get();
     if (phase !== 'hiding') return;
     if (hidingZone) return; // Already settled
     if (!playerStationId) return;
+    // Can't settle while on the train, but can cancel a pending departure to settle
+    const { clock } = get();
+    if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) return;
 
     const stations = getStations();
     const station = stations[playerStationId];
     if (!station) return;
 
     set({
+      playerTransit: null, // Cancel any pending departure
       hidingZone: {
         stationId: playerStationId,
         lat: station.lat,
@@ -219,7 +296,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   tick: (nowMs: number) => {
-    set((state) => ({ clock: tickClock(state.clock, nowMs) }));
+    const state = get();
+    const newClock = tickClock(state.clock, nowMs);
+
+    // Check player transit completion
+    let playerTransit = state.playerTransit;
+    let playerStationId = state.playerStationId;
+    let visitedStations = state.visitedStations;
+    if (playerTransit && newClock.gameMinutes >= playerTransit.arrivalTime) {
+      playerStationId = playerTransit.toStationId;
+      if (state.playerRole === 'seeker' && !visitedStations.has(playerStationId)) {
+        visitedStations = new Set(visitedStations);
+        visitedStations.add(playerStationId);
+      }
+      playerTransit = null;
+    }
+
+    // Check seeker transit completion
+    let seekerTransit = state.seekerTransit;
+    let seekerStationId = state.seekerStationId;
+    if (seekerTransit && newClock.gameMinutes >= seekerTransit.arrivalTime) {
+      seekerStationId = seekerTransit.toStationId;
+      seekerTransit = null;
+    }
+
+    set({
+      clock: newClock,
+      playerTransit,
+      playerStationId,
+      visitedStations,
+      seekerTransit,
+      seekerStationId,
+    });
   },
 
   transitionPhase: (to: GamePhase) => {
@@ -234,19 +342,46 @@ export const useGameStore = create<GameStore>((set, get) => ({
         hidingZone: null,
         clock: createGameClock(),
         seekerStationId: null,
+        visitedStations: new Set<string>(),
         constraints: [],
         questionsAsked: [],
         cooldownTracker: null,
         gameResult: null,
         debugLog: [],
         isAISeeking: false,
+        coinBudget: null,
+        playerTransit: null,
+        seekerTransit: null,
+        seekerMode: 'single',
+        seekerTurnNumber: 0,
+        consensusLog: [],
       });
     } else {
       set({ phase: to });
     }
   },
 
-  setApiKey: (key: string) => set({ apiKey: key }),
+  setApiKey: (key: string) => {
+    set({ apiKey: key });
+    // Check if we should switch to consensus mode
+    const state = get();
+    if (key.trim() && state.openaiApiKey.trim()) {
+      set({ seekerMode: 'consensus' });
+    } else {
+      set({ seekerMode: 'single' });
+    }
+  },
+
+  setOpenaiApiKey: (key: string) => {
+    set({ openaiApiKey: key });
+    // Check if we should switch to consensus mode
+    const state = get();
+    if (key.trim() && state.apiKey.trim()) {
+      set({ seekerMode: 'consensus' });
+    } else {
+      set({ seekerMode: 'single' });
+    }
+  },
 
   addConstraint: (constraint) =>
     set((state) => ({ constraints: [...state.constraints, constraint] })),
@@ -297,12 +432,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       phase: 'seeking',
       seekerStationId: bestStation,
+      visitedStations: new Set<string>(),
       cooldownTracker: createCooldownTracker(),
       constraints: [],
       questionsAsked: [],
       gameResult: null,
       debugLog: [],
       isAISeeking: false,
+      coinBudget: createCoinBudget(),
+      playerTransit: null,
+      seekerTransit: null,
+      seekerTurnNumber: 0,
+      consensusLog: [],
     });
   },
 
@@ -315,80 +456,171 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.cooldownTracker) return;
 
     set({ isAISeeking: true });
-    logger.info('gameStore', `executeSeekerTurn: starting. Seeker at ${state.seekerStationId}, game time ${Math.floor(state.clock.gameMinutes)}min`);
+    logger.info('gameStore', `executeSeekerTurn: starting. Seeker at ${state.seekerStationId}, game time ${Math.floor(state.clock.gameMinutes)}min, mode=${state.seekerMode}`);
 
     try {
-      const result = await runSeekerTurn(
-        state.apiKey,
-        state.seekerStationId,
-        state.playerStationId,
-        state.clock.gameMinutes,
-        state.cooldownTracker,
-        state.constraints,
-        state.questionsAsked,
-        (action) => {
-          // Update store with each action for live UI updates
-          const current = get();
-          if (action.type === 'ask_question') {
-            set({
-              constraints: action.constraint
-                ? [...current.constraints, action.constraint]
-                : current.constraints,
-              questionsAsked: [
-                ...current.questionsAsked,
-                { question: action.questionText, answer: action.answer, category: action.category },
-              ],
-              debugLog: [
-                ...current.debugLog,
-                {
-                  timestamp: Date.now(),
-                  tool: 'ask_question',
-                  args: { question_id: action.questionId },
-                  result: { answer: action.answer, constraint: action.constraint },
-                },
-              ],
-            });
-          } else if (action.type === 'travel_to') {
-            if (action.success) {
+      if (state.seekerMode === 'consensus' && state.openaiApiKey) {
+        // Consensus mode: dual seekers
+        const configA: ProviderConfig = { type: 'claude', apiKey: state.apiKey };
+        const configB: ProviderConfig = { type: 'openai', apiKey: state.openaiApiKey };
+
+        const result = await runConsensusTurn(
+          configA,
+          configB,
+          state.seekerStationId,
+          state.playerStationId,
+          state.clock.gameMinutes,
+          state.cooldownTracker,
+          state.constraints,
+          state.questionsAsked,
+          state.coinBudget,
+          state.seekerTurnNumber,
+          (action) => {
+            const current = get();
+            if (action.type === 'ask_question') {
               set({
-                seekerStationId: action.stationId,
+                constraints: action.constraint
+                  ? [...current.constraints, action.constraint]
+                  : current.constraints,
+                questionsAsked: [
+                  ...current.questionsAsked,
+                  { question: action.questionText, answer: action.answer, category: action.category },
+                ],
                 debugLog: [
                   ...current.debugLog,
                   {
                     timestamp: Date.now(),
-                    tool: 'travel_to',
-                    args: { station_id: action.stationId },
-                    result: { success: true, message: action.message },
+                    tool: 'ask_question',
+                    args: { question_id: action.questionId },
+                    result: { answer: action.answer, constraint: action.constraint },
+                  },
+                ],
+              });
+            } else if (action.type === 'travel_to') {
+              if (action.success) {
+                set({
+                  seekerStationId: action.stationId,
+                  debugLog: [
+                    ...current.debugLog,
+                    {
+                      timestamp: Date.now(),
+                      tool: 'travel_to',
+                      args: { station_id: action.stationId },
+                      result: { success: true, message: action.message },
+                    },
+                  ],
+                });
+              }
+            } else if (action.type === 'thinking') {
+              set({
+                debugLog: [
+                  ...current.debugLog,
+                  {
+                    timestamp: Date.now(),
+                    tool: 'thinking',
+                    args: {},
+                    result: action.text,
                   },
                 ],
               });
             }
-          } else if (action.type === 'thinking') {
-            set({
-              debugLog: [
-                ...current.debugLog,
-                {
-                  timestamp: Date.now(),
-                  tool: 'thinking',
-                  args: {},
-                  result: action.text,
-                },
-              ],
-            });
-          }
-        },
-      );
+          },
+          (entry) => {
+            set((s) => ({ consensusLog: [...s.consensusLog, entry] }));
+          },
+        );
 
-      // Apply final results
-      logger.info('gameStore', `executeSeekerTurn: completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}, result=${result.gameResult}`);
-      set({
-        seekerStationId: result.seekerStationId,
-        isAISeeking: false,
-      });
+        logger.info('gameStore', `executeSeekerTurn (consensus): completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}`);
+        set({
+          seekerStationId: result.seekerStationId,
+          isAISeeking: false,
+          coinBudget: result.coinBudget,
+          cooldownTracker: result.cooldownTracker,
+          seekerTurnNumber: state.seekerTurnNumber + 1,
+        });
 
-      if (result.gameOver && result.gameResult) {
-        logger.info('gameStore', `Game over: ${result.gameResult}`);
-        set({ gameResult: result.gameResult, phase: 'round_end' });
+        if (result.gameOver && result.gameResult) {
+          logger.info('gameStore', `Game over: ${result.gameResult}`);
+          set({ gameResult: result.gameResult, phase: 'round_end' });
+        }
+      } else {
+        // Single seeker mode
+        const result = await runSeekerTurn(
+          state.apiKey,
+          state.seekerStationId,
+          state.playerStationId,
+          state.clock.gameMinutes,
+          state.cooldownTracker,
+          state.constraints,
+          state.questionsAsked,
+          (action) => {
+            // Update store with each action for live UI updates
+            const current = get();
+            if (action.type === 'ask_question') {
+              set({
+                constraints: action.constraint
+                  ? [...current.constraints, action.constraint]
+                  : current.constraints,
+                questionsAsked: [
+                  ...current.questionsAsked,
+                  { question: action.questionText, answer: action.answer, category: action.category },
+                ],
+                debugLog: [
+                  ...current.debugLog,
+                  {
+                    timestamp: Date.now(),
+                    tool: 'ask_question',
+                    args: { question_id: action.questionId },
+                    result: { answer: action.answer, constraint: action.constraint },
+                  },
+                ],
+              });
+            } else if (action.type === 'travel_to') {
+              if (action.success) {
+                set({
+                  seekerStationId: action.stationId,
+                  debugLog: [
+                    ...current.debugLog,
+                    {
+                      timestamp: Date.now(),
+                      tool: 'travel_to',
+                      args: { station_id: action.stationId },
+                      result: { success: true, message: action.message },
+                    },
+                  ],
+                });
+              }
+            } else if (action.type === 'thinking') {
+              set({
+                debugLog: [
+                  ...current.debugLog,
+                  {
+                    timestamp: Date.now(),
+                    tool: 'thinking',
+                    args: {},
+                    result: action.text,
+                  },
+                ],
+              });
+            }
+          },
+          state.coinBudget,
+        );
+
+        // Apply final results
+        logger.info('gameStore', `executeSeekerTurn: completed. Seeker now at ${result.seekerStationId}, gameOver=${result.gameOver}, result=${result.gameResult}`);
+        set({
+          seekerStationId: result.seekerStationId,
+          isAISeeking: false,
+          coinBudget: result.coinBudget ?? state.coinBudget,
+          cooldownTracker: result.cooldownTracker ?? state.cooldownTracker,
+          seekerTurnNumber: state.seekerTurnNumber + 1,
+        });
+
+        if (result.gameOver && result.gameResult) {
+          logger.info('gameStore', `Game over: ${result.gameResult}`);
+          set({ gameResult: result.gameResult, phase: 'round_end' });
+        }
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -426,9 +658,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Check cooldown
     if (!canAskCategory(state.cooldownTracker, question.category, state.clock.gameMinutes)) return;
 
+    // Check coin budget
+    if (state.coinBudget && !canAfford(state.coinBudget, question.category)) return;
+
+    // Compute seeker position (interpolated if in transit)
+    const allStations = getStations();
+    let seekerPos: string | { lat: number; lng: number; country?: string } = state.playerStationId;
+    if (state.playerTransit) {
+      const fromSt = allStations[state.playerTransit.fromStationId];
+      const toSt = allStations[state.playerTransit.toStationId];
+      if (fromSt && toSt) {
+        const totalDuration = state.playerTransit.arrivalTime - state.playerTransit.departureTime;
+        const elapsed = state.clock.gameMinutes - state.playerTransit.departureTime;
+        const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
+        seekerPos = {
+          lat: fromSt.lat + (toSt.lat - fromSt.lat) * t,
+          lng: fromSt.lng + (toSt.lng - fromSt.lng) * t,
+          country: t < 0.5 ? fromSt.country : toSt.country,
+        };
+      }
+    }
+
     // Evaluate
-    const result = evaluateQuestion(question, state.hidingZone.stationId, state.playerStationId);
+    const result = evaluateQuestion(question, state.hidingZone.stationId, seekerPos);
     const newCooldown = recordQuestion(state.cooldownTracker, question.category, state.clock.gameMinutes);
+
+    // Deduct coins
+    const newCoins = state.coinBudget ? spendCoins(state.coinBudget, question.category) : null;
 
     set({
       constraints: result.constraint
@@ -439,6 +695,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         { question: question.text, answer: result.answer, category: question.category },
       ],
       cooldownTracker: newCooldown,
+      coinBudget: newCoins ?? state.coinBudget,
     });
 
     logger.info('gameStore', `Seeker asked: "${question.text}" → "${result.answer}"`);
@@ -448,18 +705,41 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = get();
     if (state.phase !== 'seeking' || state.playerRole !== 'seeker') return;
     if (!state.playerStationId) return;
+    // Block if already on the train (past departure), but allow changing while waiting
+    if (state.playerTransit && state.clock.gameMinutes >= state.playerTransit.departureTime) return;
 
     const neighbors = getNeighbors(state.playerStationId);
     if (!neighbors.includes(stationId)) return;
 
-    set({ playerStationId: stationId });
+    // Compute travel info
+    const travelInfo = getTravelInfo(state.playerStationId, stationId, state.clock.gameMinutes);
+    if (travelInfo) {
+      set({
+        playerTransit: {
+          fromStationId: state.playerStationId,
+          toStationId: stationId,
+          departureTime: travelInfo.departureTime,
+          arrivalTime: travelInfo.arrivalTime,
+          trainType: travelInfo.trainType,
+        },
+      });
+    } else {
+      // Fallback: instant travel
+      const newVisited = new Set(state.visitedStations);
+      newVisited.add(stationId);
+      set({ playerStationId: stationId, visitedStations: newVisited });
+    }
+
     logger.info('gameStore', `Seeker traveled to ${stationId}`);
 
-    // Check win condition
-    const updated = get();
-    if (updated.hidingZone && updated.playerStationId === updated.hidingZone.stationId) {
-      logger.info('gameStore', `Seeker wins! Found hider at ${stationId}`);
-      set({ gameResult: 'seeker_wins', phase: 'round_end' });
+    // Win condition check is done in tick() when transit completes,
+    // or immediately if instant
+    if (!travelInfo) {
+      const updated = get();
+      if (updated.hidingZone && updated.playerStationId === updated.hidingZone.stationId) {
+        logger.info('gameStore', `Seeker wins! Found hider at ${stationId}`);
+        set({ gameResult: 'seeker_wins', phase: 'round_end' });
+      }
     }
   },
 }));

@@ -11,11 +11,12 @@ import type {
 } from '../client/aiClient.ts';
 import { getToolDefinitions } from '../client/aiClient.ts';
 import { buildSeekerSystemPrompt } from '../client/systemPrompts.ts';
+import type { ProviderConfig, ConversationMessage } from '../client/providerAdapter.ts';
 import {
-  sendClaudeMessage,
+  sendProviderMessage,
   buildToolResultMessage,
   buildAssistantMessage,
-} from '../client/providers/claude.ts';
+} from '../client/providerAdapter.ts';
 import { getQuestionById, QUESTION_POOL } from '../questions/questionPool.ts';
 import { evaluateQuestion } from '../questions/evaluators.ts';
 import {
@@ -27,6 +28,8 @@ import {
 import { getStations, getNeighbors } from '../data/graph.ts';
 import { checkWinCondition, checkTimeLimit } from './seekingPhase.ts';
 import { logger } from './logger.ts';
+import { canAfford, spendCoins, getCost, type CoinBudget } from './coinSystem.ts';
+import { getTravelInfo } from './trainSchedule.ts';
 
 const MAX_INFO_ROUNDS = 2;
 const MAX_TOTAL_ROUNDS = 10;  // hard safety cap
@@ -72,7 +75,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function runSeekerTurn(
-  apiKey: string,
+  apiKeyOrConfig: string | ProviderConfig,
   seekerStationId: string,
   hiderStationId: string,
   gameMinutes: number,
@@ -80,13 +83,21 @@ export async function runSeekerTurn(
   constraints: Constraint[],
   questionsAsked: Array<{ question: string; answer: string }>,
   onAction: (action: SeekerAction) => void,
-): Promise<SeekerTurnResult> {
+  coinBudget?: CoinBudget | null,
+): Promise<SeekerTurnResult & { coinBudget?: CoinBudget | null; cooldownTracker?: CooldownTracker }> {
+  // Support both raw API key (backward compat) and ProviderConfig
+  const providerConfig: ProviderConfig = typeof apiKeyOrConfig === 'string'
+    ? { type: 'claude', apiKey: apiKeyOrConfig }
+    : apiKeyOrConfig;
+
   const stations = getStations();
   const tools = getToolDefinitions();
   const systemPrompt = buildSeekerSystemPrompt();
 
   let currentSeekerStation = seekerStationId;
   let currentCooldown = cooldownTracker;
+  let currentCoins = coinBudget ?? null;
+  let turnGameMinutes = gameMinutes;
   const newConstraints: Constraint[] = [];
   const newQuestions: Array<{ question: string; answer: string }> = [];
 
@@ -100,13 +111,10 @@ export async function runSeekerTurn(
   logger.info('seekerLoop', `=== SEEKER TURN START === at ${stations[seekerStationId]?.name} (${seekerStationId}), game time: ${Math.floor(gameMinutes)}min`);
 
   // Build initial conversation with a user message prompting the AI to take its turn
-  const conversationHistory: Array<{
-    role: 'user' | 'assistant';
-    content: string | Array<{ type: string; [key: string]: unknown }>;
-  }> = [
+  const conversationHistory: ConversationMessage[] = [
     {
       role: 'user',
-      content: `It is your turn. The game clock is at ${Math.floor(gameMinutes)} minutes. You are at station "${stations[currentSeekerStation]?.name ?? currentSeekerStation}". Call get_my_state and get_available_questions together first, then ask questions. Travel calls are free and unlimited — you can travel multiple hops per turn. Always travel toward candidate stations.`,
+      content: `It is your turn. The game clock is at ${Math.floor(turnGameMinutes)} minutes. You are at station "${stations[currentSeekerStation]?.name ?? currentSeekerStation}". ${currentCoins ? `You have ${currentCoins.remaining}/${currentCoins.total} coins remaining.` : ''} Call get_my_state and get_available_questions together first, then ask questions. Travel calls advance the game clock — each hop takes real time. Travel toward candidate stations.`,
     },
   ];
 
@@ -119,16 +127,16 @@ export async function runSeekerTurn(
       await sleep(800);
     }
 
-    logger.info('seekerLoop', `Round ${totalRounds + 1} (info: ${infoRounds}/${MAX_INFO_ROUNDS}): calling Claude API...`);
+    logger.info('seekerLoop', `Round ${totalRounds + 1} (info: ${infoRounds}/${MAX_INFO_ROUNDS}): calling ${providerConfig.type} API...`);
 
-    const result = await sendClaudeMessage(
-      { apiKey },
+    const result = await sendProviderMessage(
+      providerConfig,
       systemPrompt,
       conversationHistory,
       tools,
     );
 
-    logger.info('seekerLoop', `Claude responded: ${result.toolCalls.length} tool calls, stop_reason=${result.stopReason}`,
+    logger.info('seekerLoop', `${providerConfig.type} responded: ${result.toolCalls.length} tool calls, stop_reason=${result.stopReason}`,
       result.toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.input)})`));
 
     // Report thinking text
@@ -176,17 +184,30 @@ export async function runSeekerTurn(
             break;
           }
 
-          if (!canAskCategory(currentCooldown, question.category, gameMinutes)) {
-            const remaining = getCooldownRemaining(currentCooldown, question.category, gameMinutes);
+          if (!canAskCategory(currentCooldown, question.category, turnGameMinutes)) {
+            const remaining = getCooldownRemaining(currentCooldown, question.category, turnGameMinutes);
             resultContent = JSON.stringify({
               error: `Category "${question.category}" is on cooldown. ${Math.ceil(remaining)} game-minutes remaining.`,
             });
             break;
           }
 
+          // Check coin budget
+          if (currentCoins && !canAfford(currentCoins, question.category)) {
+            resultContent = JSON.stringify({
+              error: `Cannot afford ${question.category} question (cost=${getCost(question.category)}, remaining=${currentCoins.remaining} coins).`,
+            });
+            break;
+          }
+
           const evalResult = evaluateQuestion(question, hiderStationId, currentSeekerStation);
-          currentCooldown = recordQuestion(currentCooldown, question.category, gameMinutes);
+          currentCooldown = recordQuestion(currentCooldown, question.category, turnGameMinutes);
           askedQuestionIds.add(params.question_id);
+
+          // Deduct coins
+          if (currentCoins) {
+            currentCoins = spendCoins(currentCoins, question.category);
+          }
 
           if (evalResult.constraint) {
             newConstraints.push(evalResult.constraint);
@@ -196,9 +217,10 @@ export async function runSeekerTurn(
           resultContent = JSON.stringify({
             answer: evalResult.answer,
             constraint: evalResult.constraint,
+            ...(currentCoins ? { coinBudget: currentCoins } : {}),
           });
 
-          logger.info('seekerLoop', `QUESTION: "${question.text}" → "${evalResult.answer}" [${question.category}]`);
+          logger.info('seekerLoop', `QUESTION: "${question.text}" → "${evalResult.answer}" [${question.category}]${currentCoins ? ` (coins: ${currentCoins.remaining}/${currentCoins.total})` : ''}`);
 
           onAction({
             type: 'ask_question',
@@ -229,14 +251,32 @@ export async function runSeekerTurn(
             break;
           }
 
+          // Compute travel time
+          const travelInfo = getTravelInfo(currentSeekerStation, params.station_id, turnGameMinutes);
+
           currentSeekerStation = params.station_id;
           const newStation = stations[currentSeekerStation];
-          resultContent = JSON.stringify({
-            success: true,
-            message: `Traveled to ${newStation?.name ?? params.station_id}`,
-          });
 
-          logger.info('seekerLoop', `TRAVEL: → ${newStation?.name ?? params.station_id} (${params.station_id})`);
+          if (travelInfo) {
+            turnGameMinutes = travelInfo.arrivalTime;
+            resultContent = JSON.stringify({
+              success: true,
+              message: `Traveled to ${newStation?.name ?? params.station_id}`,
+              trainType: travelInfo.trainType,
+              departureTime: Math.round(travelInfo.departureTime),
+              arrivalTime: Math.round(travelInfo.arrivalTime),
+              waitMinutes: Math.round(travelInfo.waitMinutes),
+              travelMinutes: Math.round(travelInfo.travelMinutes),
+              currentGameTime: Math.round(turnGameMinutes),
+            });
+          } else {
+            resultContent = JSON.stringify({
+              success: true,
+              message: `Traveled to ${newStation?.name ?? params.station_id}`,
+            });
+          }
+
+          logger.info('seekerLoop', `TRAVEL: → ${newStation?.name ?? params.station_id} (${params.station_id})${travelInfo ? ` [${travelInfo.trainType}, +${Math.round(travelInfo.totalMinutes)}min, now at ${Math.round(turnGameMinutes)}min]` : ''}`);
 
           onAction({
             type: 'travel_to',
@@ -260,6 +300,8 @@ export async function runSeekerTurn(
                 newQuestions,
                 gameOver: true,
                 gameResult: 'seeker_wins',
+                coinBudget: currentCoins,
+                cooldownTracker: currentCooldown,
               };
             }
           }
@@ -279,17 +321,42 @@ export async function runSeekerTurn(
             }
           }
 
-          const state: SeekerViewState = {
+          // Build travel info for each neighbor
+          const neighborTravelInfo: Record<string, unknown> = {};
+          for (const nId of neighbors) {
+            const tInfo = getTravelInfo(currentSeekerStation, nId, turnGameMinutes);
+            if (tInfo) {
+              neighborTravelInfo[nId] = {
+                stationName: stations[nId]?.name ?? nId,
+                trainType: tInfo.trainType,
+                nextDeparture: Math.round(tInfo.departureTime),
+                arrivalTime: Math.round(tInfo.arrivalTime),
+                waitMinutes: Math.round(tInfo.waitMinutes),
+                travelMinutes: Math.round(tInfo.travelMinutes),
+                totalMinutes: Math.round(tInfo.totalMinutes),
+              };
+            }
+          }
+
+          const state: SeekerViewState & { neighborTravelInfo?: Record<string, unknown>; coinBudget?: CoinBudget } = {
             phase: 'seeking',
             seekerStationId: currentSeekerStation,
             seekerStationName: seekerStation?.name ?? currentSeekerStation,
             seekerCountry: seekerStation?.country ?? '',
-            gameMinutes,
+            gameMinutes: turnGameMinutes,
             constraints: allConstraints,
             availableConnections: neighbors,
             questionsAsked: [...questionsAsked, ...newQuestions],
             candidateStations,
           };
+
+          if (Object.keys(neighborTravelInfo).length > 0) {
+            state.neighborTravelInfo = neighborTravelInfo;
+          }
+          if (currentCoins) {
+            state.coinBudget = currentCoins;
+          }
+
           resultContent = JSON.stringify(state);
           onAction({ type: 'get_my_state', state });
 
@@ -300,15 +367,22 @@ export async function runSeekerTurn(
         case 'get_available_questions': {
           const questions: AvailableQuestion[] = QUESTION_POOL.map((q) => {
             const alreadyAsked = askedQuestionIds.has(q.id);
+            const cost = getCost(q.category);
+            const affordable = currentCoins ? canAfford(currentCoins, q.category) : true;
             return {
               id: q.id,
               text: q.text,
               category: q.category,
-              available: !alreadyAsked && canAskCategory(currentCooldown, q.category, gameMinutes),
-              cooldown_remaining: alreadyAsked ? -1 : getCooldownRemaining(currentCooldown, q.category, gameMinutes),
+              available: !alreadyAsked && canAskCategory(currentCooldown, q.category, turnGameMinutes) && affordable,
+              cooldown_remaining: alreadyAsked ? -1 : getCooldownRemaining(currentCooldown, q.category, turnGameMinutes),
+              cost,
+              affordable,
             };
           });
-          resultContent = JSON.stringify({ questions });
+          resultContent = JSON.stringify({
+            questions,
+            ...(currentCoins ? { coinBudget: currentCoins } : {}),
+          });
           onAction({ type: 'get_available_questions', questions });
           break;
         }
@@ -339,18 +413,20 @@ export async function runSeekerTurn(
   }
 
   // Check time limit
-  if (checkTimeLimit(gameMinutes)) {
-    logger.info('seekerLoop', `=== HIDER WINS === Time limit reached at ${Math.floor(gameMinutes)}min`);
+  if (checkTimeLimit(turnGameMinutes)) {
+    logger.info('seekerLoop', `=== HIDER WINS === Time limit reached at ${Math.floor(turnGameMinutes)}min`);
     return {
       seekerStationId: currentSeekerStation,
       newConstraints,
       newQuestions,
       gameOver: true,
       gameResult: 'hider_wins',
+      coinBudget: currentCoins,
+      cooldownTracker: currentCooldown,
     };
   }
 
-  logger.info('seekerLoop', `=== TURN END === Seeker now at ${stations[currentSeekerStation]?.name}, ${newQuestions.length} questions asked, ${newConstraints.length} new constraints`);
+  logger.info('seekerLoop', `=== TURN END === Seeker now at ${stations[currentSeekerStation]?.name}, ${newQuestions.length} questions asked, ${newConstraints.length} new constraints, game time: ${Math.round(turnGameMinutes)}min`);
 
   return {
     seekerStationId: currentSeekerStation,
@@ -358,5 +434,7 @@ export async function runSeekerTurn(
     newQuestions,
     gameOver: false,
     gameResult: null,
+    coinBudget: currentCoins,
+    cooldownTracker: currentCooldown,
   };
 }

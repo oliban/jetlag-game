@@ -32,19 +32,19 @@ describe('Seeking Phase', () => {
     expect(result).toBe(false);
   });
 
-  it('time limit is 720 game minutes (12 hours)', () => {
-    expect(SEEKING_TIME_LIMIT).toBe(720);
+  it('time limit is 3000 game minutes (50 hours)', () => {
+    expect(SEEKING_TIME_LIMIT).toBe(3000);
   });
 
   it('time limit not exceeded at start', () => {
     expect(checkTimeLimit(0)).toBe(false);
   });
 
-  it('time limit exceeded at 720 minutes', () => {
-    expect(checkTimeLimit(720)).toBe(true);
+  it('time limit exceeded at 3000 minutes', () => {
+    expect(checkTimeLimit(3000)).toBe(true);
   });
 
-  it('time limit exceeded past 720 minutes', () => {
-    expect(checkTimeLimit(800)).toBe(true);
+  it('time limit exceeded past 3000 minutes', () => {
+    expect(checkTimeLimit(3100)).toBe(true);
   });
 });

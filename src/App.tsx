@@ -6,6 +6,7 @@ import SetupScreen from './components/SetupScreen';
 import QuestionLog from './components/QuestionLog';
 import DebugPanel from './components/DebugPanel';
 import RoundEndScreen from './components/RoundEndScreen';
+import DepartureBoardModal from './components/DepartureBoardModal';
 import { useGameStore } from './store/gameStore';
 
 function App() {
@@ -19,7 +20,27 @@ function App() {
   const playerRole = useGameStore((s) => s.playerRole);
   const clock = useGameStore((s) => s.clock);
   const setGameResult = useGameStore((s) => s.setGameResult);
+  const seekerMode = useGameStore((s) => s.seekerMode);
+  const setSpeed = useGameStore((s) => s.setSpeed);
+  const togglePause = useGameStore((s) => s.togglePause);
   const rafRef = useRef<number>(0);
+
+  // Keyboard shortcuts for speed: 1=1x, 2=2x, 3=5x, 4=10x, 5=pause/unpause
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (phase === 'setup') return;
+      switch (e.key) {
+        case '1': setSpeed(1); break;
+        case '2': setSpeed(2); break;
+        case '3': setSpeed(5); break;
+        case '4': setSpeed(10); break;
+        case '5': togglePause(); break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [phase, setSpeed, togglePause]);
 
   // Game clock loop
   useEffect(() => {
@@ -69,10 +90,10 @@ function App() {
     return () => clearTimeout(timer);
   }, [gameResult, transitionPhase]);
 
-  // Seeker mode time limit: hider wins if 12 hours (720 minutes) pass
+  // Seeker mode time limit: hider wins if 50 hours (3000 minutes) pass
   useEffect(() => {
     if (playerRole !== 'seeker' || phase !== 'seeking') return;
-    if (clock.gameMinutes >= 720) {
+    if (clock.gameMinutes >= 3000) {
       setGameResult('hider_wins');
       transitionPhase('round_end');
     }
@@ -85,14 +106,17 @@ function App() {
       <Sidebar />
       <QuestionLog />
       <DebugPanel />
+      <DepartureBoardModal />
       <SetupScreen />
       {phase === 'round_end' && <RoundEndScreen />}
 
       {/* AI thinking indicator */}
       {playerRole === 'hider' && isAISeeking && phase === 'seeking' && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-full border border-gray-700 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-          <span className="text-sm text-gray-300">AI is thinking...</span>
+          <div className={`w-2 h-2 rounded-full ${seekerMode === 'consensus' ? 'bg-purple-400' : 'bg-red-400'} animate-pulse`} />
+          <span className="text-sm text-gray-300">
+            {seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...'}
+          </span>
         </div>
       )}
     </div>

@@ -6,12 +6,17 @@ export default function SetupScreen() {
   const startGame = useGameStore((s) => s.startGame);
   const storedApiKey = useGameStore((s) => s.apiKey);
   const setApiKey = useGameStore((s) => s.setApiKey);
+  const storedOpenaiKey = useGameStore((s) => s.openaiApiKey);
+  const setOpenaiApiKey = useGameStore((s) => s.setOpenaiApiKey);
 
   const [selectedRole, setSelectedRole] = useState<'hider' | 'seeker' | null>(null);
   const [localKey, setLocalKey] = useState(storedApiKey);
+  const [localOpenaiKey, setLocalOpenaiKey] = useState(storedOpenaiKey);
   const [error, setError] = useState('');
 
   if (phase !== 'setup') return null;
+
+  const hasBothKeys = localKey.trim() !== '' && localOpenaiKey.trim() !== '';
 
   const handleStart = () => {
     const key = localKey.trim();
@@ -20,6 +25,9 @@ export default function SetupScreen() {
       return;
     }
     setApiKey(key);
+    if (localOpenaiKey.trim()) {
+      setOpenaiApiKey(localOpenaiKey.trim());
+    }
     setError('');
     startGame();
   };
@@ -40,7 +48,7 @@ export default function SetupScreen() {
             <div className="bg-gray-800/50 rounded-lg p-3 text-sm text-gray-400 space-y-1">
               <p>1. Choose your role: hider or seeker.</p>
               <p>2. Travel across the European rail network using adjacent station connections.</p>
-              <p>3. The game lasts 12 in-game hours — can you outwit your opponent?</p>
+              <p>3. The game lasts 50 in-game hours — can you outwit your opponent?</p>
               <p>4. Press D during the game to open the debug panel.</p>
             </div>
 
@@ -73,11 +81,11 @@ export default function SetupScreen() {
             <div className="bg-gray-800/50 rounded-lg p-3 text-sm text-gray-400 space-y-1">
               <p>1. You start at a random station on the European rail network.</p>
               <p>2. Travel to adjacent stations, then settle to create your hiding zone.</p>
-              <p>3. An AI seeker will ask questions and try to find you within 12 game-hours.</p>
+              <p>3. An AI seeker will ask questions and try to find you within 50 game-hours.</p>
               <p>4. Press D during the game to open the AI debug panel.</p>
             </div>
 
-            {/* API key input */}
+            {/* API key input - Anthropic */}
             <div>
               <label
                 htmlFor="api-key"
@@ -96,10 +104,34 @@ export default function SetupScreen() {
                 placeholder="sk-ant-..."
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-amber-500"
               />
-              {error && (
-                <p className="text-red-400 text-xs mt-1">{error}</p>
+            </div>
+
+            {/* API key input - OpenAI (optional) */}
+            <div>
+              <label
+                htmlFor="openai-key"
+                className="block text-sm font-medium text-gray-300 mb-1"
+              >
+                OpenAI API Key <span className="text-gray-500">(optional)</span>
+              </label>
+              <input
+                id="openai-key"
+                type="password"
+                value={localOpenaiKey}
+                onChange={(e) => setLocalOpenaiKey(e.target.value)}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+              {hasBothKeys && (
+                <p className="text-purple-400 text-xs mt-1">
+                  Two seekers will work together in consensus mode (Claude + GPT-4o)
+                </p>
               )}
             </div>
+
+            {error && (
+              <p className="text-red-400 text-xs">{error}</p>
+            )}
 
             <button
               onClick={handleStart}
@@ -109,7 +141,7 @@ export default function SetupScreen() {
             </button>
 
             <p className="text-xs text-gray-500 text-center">
-              Your API key is used locally to power the AI seeker and is never sent to any server other than Anthropic.
+              Your API keys are used locally to power the AI seekers and are never sent to any server other than their respective providers.
             </p>
 
             <button

@@ -1,6 +1,6 @@
 import { haversineDistance } from './geo';
 
-export const SEEKING_TIME_LIMIT = 720; // 12 game-hours in minutes
+export const SEEKING_TIME_LIMIT = 3000; // 50 game-hours in minutes
 
 export interface Position {
   lat: number;

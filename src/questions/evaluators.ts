@@ -10,16 +10,19 @@ export interface EvaluationResult {
 
 /**
  * Evaluate a question given hider and seeker positions.
+ * seekerPos can be a station ID or explicit {lat, lng, country?} for in-transit evaluation.
  * All answers are "Yes" or "No".
  */
 export function evaluateQuestion(
   question: Question,
   hiderStationId: string,
-  seekerStationId: string,
+  seekerPos: string | { lat: number; lng: number; country?: string },
 ): EvaluationResult {
   const stations = getStations();
   const hider = stations[hiderStationId];
-  const seeker = stations[seekerStationId];
+  const seeker = typeof seekerPos === 'string'
+    ? stations[seekerPos]
+    : seekerPos;
 
   if (!hider || !seeker) {
     return { answer: 'Unknown', constraint: null };
@@ -74,12 +77,13 @@ export function evaluateQuestion(
     }
 
     case 'prec-same-country': {
-      const same = hider.country === seeker.country;
+      const seekerCountry = 'country' in seeker ? seeker.country : undefined;
+      const same = !!seekerCountry && hider.country === seekerCountry;
       return {
         answer: same ? 'Yes' : 'No',
         constraint: {
           type: 'text',
-          label: same ? `In ${seeker.country}` : `Not in ${seeker.country}`,
+          label: same ? `In ${seekerCountry}` : `Not in ${seekerCountry ?? 'unknown'}`,
           value: same ? 'Yes' : 'No',
         },
       };

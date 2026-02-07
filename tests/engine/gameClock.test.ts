@@ -31,12 +31,20 @@ describe('Game Clock', () => {
     expect(clock.gameMinutes).toBeCloseTo(1.0, 5);
   });
 
-  it('ticks at 4x speed', () => {
+  it('ticks at 5x speed', () => {
     let clock = createGameClock();
-    clock = setClockSpeed(clock, 4);
+    clock = setClockSpeed(clock, 5);
     clock = tickClock(clock, 0);
     clock = tickClock(clock, 1000);
-    expect(clock.gameMinutes).toBeCloseTo(2.0, 5);
+    expect(clock.gameMinutes).toBeCloseTo(2.5, 5);
+  });
+
+  it('ticks at 10x speed', () => {
+    let clock = createGameClock();
+    clock = setClockSpeed(clock, 10);
+    clock = tickClock(clock, 0);
+    clock = tickClock(clock, 1000);
+    expect(clock.gameMinutes).toBeCloseTo(5.0, 5);
   });
 
   it('pauses the clock', () => {
@@ -63,6 +71,7 @@ describe('Game Clock', () => {
   it('rejects invalid speeds', () => {
     const clock = createGameClock();
     expect(() => setClockSpeed(clock, 3)).toThrow('Invalid speed');
+    expect(() => setClockSpeed(clock, 4)).toThrow('Invalid speed');
     expect(() => setClockSpeed(clock, 0)).toThrow('Invalid speed');
   });
 
