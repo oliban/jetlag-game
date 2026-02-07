@@ -1,0 +1,61 @@
+[
+  { "id": "paris-nord", "name": "Paris Gare du Nord", "country": "France", "lat": 48.8809, "lng": 2.3553 },
+  { "id": "paris-lyon", "name": "Paris Gare de Lyon", "country": "France", "lat": 48.8443, "lng": 2.3735 },
+  { "id": "paris-est", "name": "Paris Gare de l'Est", "country": "France", "lat": 48.8763, "lng": 2.3592 },
+  { "id": "lyon-part-dieu", "name": "Lyon Part-Dieu", "country": "France", "lat": 45.7606, "lng": 4.8600 },
+  { "id": "marseille-st-charles", "name": "Marseille Saint-Charles", "country": "France", "lat": 43.3026, "lng": 5.3806 },
+  { "id": "lille-europe", "name": "Lille Europe", "country": "France", "lat": 50.6389, "lng": 3.0756 },
+  { "id": "strasbourg", "name": "Strasbourg", "country": "France", "lat": 48.5850, "lng": 7.7350 },
+  { "id": "bordeaux", "name": "Bordeaux Saint-Jean", "country": "France", "lat": 44.8256, "lng": -0.5562 },
+  { "id": "nice", "name": "Nice Ville", "country": "France", "lat": 43.7049, "lng": 7.2620 },
+
+  { "id": "london-stpancras", "name": "London St Pancras", "country": "United Kingdom", "lat": 51.5322, "lng": -0.1260 },
+  { "id": "london-kings-cross", "name": "London King's Cross", "country": "United Kingdom", "lat": 51.5308, "lng": -0.1238 },
+  { "id": "edinburgh", "name": "Edinburgh Waverley", "country": "United Kingdom", "lat": 55.9520, "lng": -3.1887 },
+  { "id": "manchester", "name": "Manchester Piccadilly", "country": "United Kingdom", "lat": 53.4774, "lng": -2.2309 },
+  { "id": "birmingham", "name": "Birmingham New Street", "country": "United Kingdom", "lat": 52.4778, "lng": -1.9000 },
+
+  { "id": "berlin-hbf", "name": "Berlin Hauptbahnhof", "country": "Germany", "lat": 52.5250, "lng": 13.3694 },
+  { "id": "munich-hbf", "name": "München Hauptbahnhof", "country": "Germany", "lat": 48.1402, "lng": 11.5600 },
+  { "id": "frankfurt-hbf", "name": "Frankfurt (Main) Hbf", "country": "Germany", "lat": 50.1068, "lng": 8.6627 },
+  { "id": "hamburg-hbf", "name": "Hamburg Hauptbahnhof", "country": "Germany", "lat": 53.5530, "lng": 10.0069 },
+  { "id": "cologne-hbf", "name": "Köln Hauptbahnhof", "country": "Germany", "lat": 50.9430, "lng": 6.9589 },
+  { "id": "stuttgart-hbf", "name": "Stuttgart Hauptbahnhof", "country": "Germany", "lat": 48.7843, "lng": 9.1819 },
+  { "id": "nuremberg-hbf", "name": "Nürnberg Hauptbahnhof", "country": "Germany", "lat": 49.4460, "lng": 11.0829 },
+  { "id": "dresden-hbf", "name": "Dresden Hauptbahnhof", "country": "Germany", "lat": 51.0400, "lng": 13.7320 },
+  { "id": "hannover-hbf", "name": "Hannover Hauptbahnhof", "country": "Germany", "lat": 52.3766, "lng": 9.7414 },
+
+  { "id": "amsterdam-centraal", "name": "Amsterdam Centraal", "country": "Netherlands", "lat": 52.3791, "lng": 4.9003 },
+  { "id": "rotterdam-centraal", "name": "Rotterdam Centraal", "country": "Netherlands", "lat": 51.9244, "lng": 4.4699 },
+  { "id": "utrecht-centraal", "name": "Utrecht Centraal", "country": "Netherlands", "lat": 52.0893, "lng": 5.1101 },
+
+  { "id": "brussels-midi", "name": "Bruxelles-Midi", "country": "Belgium", "lat": 50.8359, "lng": 4.3366 },
+  { "id": "antwerp-centraal", "name": "Antwerpen-Centraal", "country": "Belgium", "lat": 51.2172, "lng": 4.4213 },
+  { "id": "bruges", "name": "Brugge", "country": "Belgium", "lat": 51.1975, "lng": 3.2169 },
+
+  { "id": "zurich-hb", "name": "Zürich HB", "country": "Switzerland", "lat": 47.3783, "lng": 8.5404 },
+  { "id": "bern", "name": "Bern", "country": "Switzerland", "lat": 46.9490, "lng": 7.4395 },
+  { "id": "geneva", "name": "Genève-Cornavin", "country": "Switzerland", "lat": 46.2100, "lng": 6.1424 },
+  { "id": "basel-sbb", "name": "Basel SBB", "country": "Switzerland", "lat": 47.5476, "lng": 7.5896 },
+  { "id": "interlaken", "name": "Interlaken Ost", "country": "Switzerland", "lat": 46.6906, "lng": 7.8693 },
+
+  { "id": "vienna-hbf", "name": "Wien Hauptbahnhof", "country": "Austria", "lat": 48.1854, "lng": 16.3785 },
+  { "id": "salzburg-hbf", "name": "Salzburg Hauptbahnhof", "country": "Austria", "lat": 47.8130, "lng": 13.0460 },
+  { "id": "innsbruck-hbf", "name": "Innsbruck Hauptbahnhof", "country": "Austria", "lat": 47.2632, "lng": 11.4010 },
+
+  { "id": "milan-centrale", "name": "Milano Centrale", "country": "Italy", "lat": 45.4861, "lng": 9.2047 },
+  { "id": "rome-termini", "name": "Roma Termini", "country": "Italy", "lat": 41.9009, "lng": 12.5019 },
+  { "id": "florence-smn", "name": "Firenze Santa Maria Novella", "country": "Italy", "lat": 43.7765, "lng": 11.2483 },
+  { "id": "venice-sl", "name": "Venezia Santa Lucia", "country": "Italy", "lat": 45.4415, "lng": 12.3210 },
+  { "id": "naples", "name": "Napoli Centrale", "country": "Italy", "lat": 40.8531, "lng": 14.2727 },
+  { "id": "turin", "name": "Torino Porta Nuova", "country": "Italy", "lat": 45.0617, "lng": 7.6781 },
+  { "id": "bologna", "name": "Bologna Centrale", "country": "Italy", "lat": 44.5059, "lng": 11.3428 },
+
+  { "id": "barcelona-sants", "name": "Barcelona Sants", "country": "Spain", "lat": 41.3793, "lng": 2.1402 },
+  { "id": "madrid-atocha", "name": "Madrid Puerta de Atocha", "country": "Spain", "lat": 40.4068, "lng": -3.6912 },
+
+  { "id": "prague-hl", "name": "Praha hlavní nádraží", "country": "Czech Republic", "lat": 50.0832, "lng": 14.4349 },
+  { "id": "warsaw-centralna", "name": "Warszawa Centralna", "country": "Poland", "lat": 52.2284, "lng": 21.0032 },
+  { "id": "budapest-keleti", "name": "Budapest Keleti", "country": "Hungary", "lat": 47.5006, "lng": 19.0842 },
+  { "id": "copenhagen-h", "name": "København H", "country": "Denmark", "lat": 55.6726, "lng": 12.5651 }
+]
