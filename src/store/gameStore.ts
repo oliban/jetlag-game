@@ -207,21 +207,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const playerStart = rng.pick(ids);
       const playerStation = stations[playerStart];
 
-      // Pick AI hider far from player
-      let bestHider = rng.pick(ids);
-      let bestDist = 0;
-      const candidates = rng.shuffle([...ids]).slice(0, Math.min(10, ids.length));
-      for (const id of candidates) {
-        if (id === playerStart) continue;
+      // Pick AI hider: minimum distance threshold + distance-weighted random
+      const MIN_HIDER_DISTANCE_KM = 300;
+      const otherIds = ids.filter(id => id !== playerStart);
+      const distances = otherIds.map(id => {
         const st = stations[id];
-        if (st && playerStation) {
-          const d = haversineDistance(st.lat, st.lng, playerStation.lat, playerStation.lng);
-          if (d > bestDist) {
-            bestDist = d;
-            bestHider = id;
-          }
-        }
+        return st && playerStation
+          ? haversineDistance(st.lat, st.lng, playerStation.lat, playerStation.lng)
+          : 0;
+      });
+
+      // Filter to stations beyond minimum distance; fall back to all if none qualify
+      let candidateIds = otherIds.filter((_, i) => distances[i] >= MIN_HIDER_DISTANCE_KM);
+      let candidateDists = distances.filter(d => d >= MIN_HIDER_DISTANCE_KM);
+      if (candidateIds.length === 0) {
+        candidateIds = otherIds;
+        candidateDists = distances;
       }
+
+      // Use distance as weight so farther stations are more likely but not guaranteed
+      const bestHider = rng.weightedPick(candidateIds, candidateDists);
+      const bestDist = candidateDists[candidateIds.indexOf(bestHider)];
 
       const hiderStation = stations[bestHider];
       logger.info('gameStore', `Seeker mode started. Player (seeker) at ${playerStation?.name} (${playerStart}), ${Math.round(bestDist)}km from hider, seed=${s}`);

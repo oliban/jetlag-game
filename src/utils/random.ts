@@ -34,5 +34,16 @@ export function createSeededRandom(seed: number) {
       }
       return arr;
     },
+
+    /** Picks a random element weighted by the given weights */
+    weightedPick<T>(items: T[], weights: number[]): T {
+      const total = weights.reduce((sum, w) => sum + w, 0);
+      let r = next() * total;
+      for (let i = 0; i < items.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return items[i];
+      }
+      return items[items.length - 1];
+    },
   };
 }
