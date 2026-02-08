@@ -18,7 +18,7 @@ export default function RoundEndScreen() {
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl text-center animate-scale-in">
+      <div className="bg-gray-900 border border-gray-700/60 rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl text-center animate-scale-in">
         {/* Result icon */}
         <div
           className={`text-6xl mb-4 ${seekerWon ? 'animate-bounce' : ''}`}
@@ -29,7 +29,7 @@ export default function RoundEndScreen() {
         {/* Title */}
         <h2
           className={`text-2xl font-bold mb-2 ${
-            playerWon ? 'text-green-400' : 'text-red-400'
+            playerWon ? 'text-emerald-400' : 'text-rose-400'
           }`}
         >
           {seekerWon

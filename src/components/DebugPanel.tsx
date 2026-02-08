@@ -65,9 +65,9 @@ export default function DebugPanel() {
     filter === 'all' ? debugLog : debugLog.filter((e) => e.tool === filter);
 
   return (
-    <div className="absolute top-12 left-4 z-20 w-96 max-h-[70vh] flex flex-col bg-gray-950/95 backdrop-blur border border-gray-700 rounded-lg shadow-xl font-mono text-xs">
+    <div className="absolute top-12 left-4 z-20 w-96 max-h-[70vh] flex flex-col bg-gray-950/95 backdrop-blur border border-gray-700/60 rounded-lg shadow-xl font-mono text-xs">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/60">
         <div className="flex items-center gap-2">
           <span className="text-gray-300 font-semibold">AI Debug</span>
           {seekerMode === 'consensus' && (

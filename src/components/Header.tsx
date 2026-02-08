@@ -18,13 +18,13 @@ export default function Header() {
   }[phase] ?? phase.toUpperCase();
 
   const phaseColor = {
-    hiding: 'text-green-400',
-    seeking: 'text-red-400',
+    hiding: 'text-emerald-400',
+    seeking: 'text-rose-400',
     round_end: 'text-amber-400',
   }[phase] ?? 'text-white';
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur border-b border-gray-700 px-4 py-2 flex items-center justify-between">
+    <div className="absolute top-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur border-b border-gray-700/60 px-4 py-2 flex items-center justify-between">
       <div className="flex items-center gap-4">
         <span className="font-mono text-sm text-gray-400">JET LAG</span>
         <span className={`font-bold text-sm ${phaseColor}`}>{phaseLabel}</span>
@@ -52,7 +52,7 @@ export default function Header() {
               className={`px-2 py-0.5 text-xs rounded font-mono ${
                 clock.speed === speed
                   ? 'bg-amber-500 text-black'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               }`}
             >
               {speed}x

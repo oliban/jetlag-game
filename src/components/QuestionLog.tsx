@@ -25,7 +25,7 @@ export default function QuestionLog() {
       {/* Header */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between bg-gray-900/95 backdrop-blur border border-gray-700 rounded-t-lg px-3 py-2"
+        className="w-full flex items-center justify-between bg-gray-900/95 backdrop-blur border border-gray-700/60 rounded-t-lg px-3 py-2"
       >
         <span className="text-sm font-semibold text-gray-200">
           Questions ({questionsAsked.length})
@@ -36,7 +36,7 @@ export default function QuestionLog() {
       </button>
 
       {!collapsed && (
-        <div className="bg-gray-900/95 backdrop-blur border border-t-0 border-gray-700 rounded-b-lg">
+        <div className="bg-gray-900/95 backdrop-blur border border-t-0 border-gray-700/60 rounded-b-lg">
           {/* Cooldown timers */}
           <div className="flex gap-2 px-3 py-2 border-b border-gray-700/50">
             {categories.map((cat) => {

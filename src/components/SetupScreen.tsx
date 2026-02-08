@@ -34,7 +34,7 @@ export default function SetupScreen() {
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-950/80 backdrop-blur-sm">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl">
+      <div className="bg-gray-900 border border-gray-700/60 rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl">
         <h1 className="text-3xl font-bold text-white mb-2">
           Jet Lag: Hide &amp; Seek
         </h1>
@@ -65,7 +65,7 @@ export default function SetupScreen() {
 
             <button
               onClick={() => startGame('seeker')}
-              className="w-full px-4 py-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-colors text-lg text-left"
+              className="w-full px-4 py-4 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-colors text-lg text-left"
             >
               Play as Seeker
               <span className="block text-sm font-normal text-red-200 mt-0.5">

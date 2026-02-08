@@ -120,24 +120,7 @@ function halfPlaneBoundaryLine(c: HalfPlaneConstraint): GeoJSON.Feature<GeoJSON.
   };
 }
 
-/** Map game country names to ISO 3166-1 alpha-3 codes */
-const COUNTRY_TO_ISO3: Record<string, string> = {
-  France: 'FRA',
-  'United Kingdom': 'GBR',
-  Germany: 'DEU',
-  Netherlands: 'NLD',
-  Belgium: 'BEL',
-  Switzerland: 'CHE',
-  Austria: 'AUT',
-  Italy: 'ITA',
-  Spain: 'ESP',
-  'Czech Republic': 'CZE',
-  Poland: 'POL',
-  Hungary: 'HUN',
-  Denmark: 'DNK',
-};
-
-const ALL_GAME_ISOS = Object.values(COUNTRY_TO_ISO3);
+import { COUNTRY_TO_ISO3, ALL_GAME_ISOS } from '../theme/colors';
 
 /** Parse a TextConstraint label like "In France" or "Not in France" and return the country name, or null */
 function parseCountryConstraint(c: TextConstraint): { country: string; negated: boolean } | null {

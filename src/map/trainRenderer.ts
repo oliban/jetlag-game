@@ -114,11 +114,16 @@ export function updateTrainPositions(
     type: 'Feature',
     properties: {
       id: train.id,
-      fromId: train.fromId,
-      toId: train.toId,
+      routeId: train.routeId,
       trainType: train.trainType,
       bearing: train.bearing,
       progress: train.progress,
+      stations: JSON.stringify(train.stations),
+      finalStationId: train.finalStationId,
+      nextStationId: train.nextStationId,
+      speed: train.speed,
+      dwelling: train.dwelling,
+      dwellingStationId: train.dwellingStationId,
     },
     geometry: {
       type: 'Point',
@@ -154,16 +159,39 @@ export function initTrainHover(
     if (!e.features?.[0]) return;
 
     const props = e.features[0].properties!;
-    const fromName = stationMap[props.fromId]?.name ?? props.fromId;
-    const toName = stationMap[props.toId]?.name ?? props.toId;
     const trainType = props.trainType as TrainType;
     const color = TRAIN_COLORS[trainType];
     const label = TRAIN_LABELS[trainType];
+    const speed = props.speed as number;
+    const dwelling = props.dwelling;
+    const dwellingStationId = props.dwellingStationId as string | null;
+    const nextStationId = props.nextStationId as string;
+
+    // Parse route stations and build display names
+    let stationNames: string[] = [];
+    try {
+      const stationIds: string[] = JSON.parse(props.stations as string);
+      stationNames = stationIds.map((id) => stationMap[id]?.name ?? id);
+    } catch {
+      stationNames = ['Unknown'];
+    }
+
+    const routeLine = stationNames.join(' \u2192 ');
+    const nextName = stationMap[nextStationId]?.name ?? nextStationId;
+
+    let statusLine: string;
+    if (dwelling && dwellingStationId) {
+      const dwellingName = stationMap[dwellingStationId]?.name ?? dwellingStationId;
+      statusLine = `Stopped at: ${dwellingName}`;
+    } else {
+      statusLine = `Next: ${nextName}`;
+    }
 
     const html = `
       <div style="font-size:13px;line-height:1.4;color:#e2e8f0;">
-        <div style="font-weight:600;">${fromName} → ${toName}</div>
-        <div style="color:${color};font-size:11px;margin-top:2px;">${label}</div>
+        <div style="font-weight:600;">${routeLine}</div>
+        <div style="color:${color};font-size:11px;margin-top:2px;">${label} \u00b7 ${speed} km/h</div>
+        <div style="font-size:11px;margin-top:2px;color:#94a3b8;">${statusLine}</div>
       </div>
     `;
 

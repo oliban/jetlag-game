@@ -8,6 +8,7 @@ import { renderConstraints } from './constraintRenderer';
 import { initTrainLayer, updateTrainPositions, initTrainHover } from './trainRenderer';
 import { logger } from '../engine/logger';
 import { classifyConnection } from '../engine/trainSchedule';
+import { ALL_GAME_ISOS, stationColorMatchExpression, countryFillMatchExpression, countryBorderMatchExpression } from '../theme/colors';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -58,6 +59,45 @@ export default function GameMap() {
     mapRef.current = map;
 
     map.on('load', () => {
+      // Country fill + border layers (below everything else)
+      map.addSource('country-boundaries-src', {
+        type: 'vector',
+        url: 'mapbox://mapbox.country-boundaries-v1',
+      });
+
+      map.addLayer({
+        id: 'country-fills',
+        type: 'fill',
+        source: 'country-boundaries-src',
+        'source-layer': 'country_boundaries',
+        filter: [
+          'all',
+          ['match', ['get', 'worldview'], ['all', 'US'], true, false],
+          ['match', ['get', 'iso_3166_1_alpha_3'], ALL_GAME_ISOS, true, false],
+        ],
+        paint: {
+          'fill-color': countryFillMatchExpression(),
+          'fill-opacity': 0.15,
+        },
+      });
+
+      map.addLayer({
+        id: 'country-borders',
+        type: 'line',
+        source: 'country-boundaries-src',
+        'source-layer': 'country_boundaries',
+        filter: [
+          'all',
+          ['match', ['get', 'worldview'], ['all', 'US'], true, false],
+          ['match', ['get', 'iso_3166_1_alpha_3'], ALL_GAME_ISOS, true, false],
+        ],
+        paint: {
+          'line-color': countryBorderMatchExpression(),
+          'line-opacity': 0.3,
+          'line-width': 1,
+        },
+      });
+
       // Connection lines — colored by train type
       const lineFeatures = connections.map((c) => {
         const fromStation = stations.find((s) => s.id === c.from);
@@ -154,9 +194,9 @@ export default function GameMap() {
             'interpolate', ['linear'], ['get', 'connections'],
             1, 4, 5, 7, 10, 10,
           ],
-          'circle-color': '#fbbf24',
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 1,
+          'circle-color': stationColorMatchExpression(),
+          'circle-stroke-color': 'rgba(255,255,255,0.6)',
+          'circle-stroke-width': 0.8,
           'circle-opacity': 0.9,
         },
       });
@@ -607,7 +647,7 @@ export default function GameMap() {
       <div ref={mapContainer} className="w-full h-full" />
 
       {popup && (
-        <div className="absolute top-14 right-4 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl max-w-xs border border-gray-700 z-20">
+        <div className="absolute top-14 right-4 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl max-w-xs border border-gray-700/60 z-20">
           <div className="flex justify-between items-start mb-2">
             <h3 className="font-bold text-amber-400 text-lg">{popup.station.name}</h3>
             <button

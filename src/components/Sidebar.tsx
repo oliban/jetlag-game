@@ -62,7 +62,7 @@ export default function Sidebar() {
     const inTransit = !!playerTransit;
 
     return (
-      <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700 min-w-[260px] max-h-[80vh] overflow-y-auto">
+      <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700/60 min-w-[260px] max-h-[80vh] overflow-y-auto">
         {/* Your Station */}
         <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
         <p className="font-bold text-amber-400">{currentStation?.name ?? playerStationId}</p>
@@ -177,7 +177,7 @@ export default function Sidebar() {
 
   // Hider mode sidebar
   return (
-    <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700 min-w-[220px]">
+    <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700/60 min-w-[220px]">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
       <p className="font-bold text-amber-400">{currentStation?.name ?? playerStationId}</p>
       <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
