@@ -200,7 +200,6 @@ export default function DepartureBoardModal() {
           const isSelected = waitingForDeparture && activeTransit?.routeId === dep.route.id
             && activeTransit?.departureTime === dep.departureTime;
 
-          const rowClickable = handleBoard && !blocked && dep.remainingStops.length > 0;
           const canExpand = !blocked && dep.remainingStops.length > 0;
           const rowKey = `${dep.route.id}-${dep.direction}-${dep.departureTime}`;
           const isExpanded = expandedKey === rowKey;
