@@ -23,6 +23,7 @@ export default function GameMap() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const playerMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const seekerMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const hasInitialPan = useRef(false);
   const [popup, setPopup] = useState<StationPopupInfo | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
 
@@ -396,6 +397,15 @@ export default function GameMap() {
       .addTo(map);
     logger.info('GameMap', `Player marker CREATED at ${station.name} (role=${playerRole})`);
 
+    // Pan to player on game start
+    if (!hasInitialPan.current) {
+      hasInitialPan.current = true;
+      map.flyTo({
+        center: [station.lng, station.lat],
+        zoom: 7,
+        duration: 800,
+      });
+    }
   }, [playerStationId, playerRole, mapLoaded]);
 
   // Attach player marker to active train during transit
