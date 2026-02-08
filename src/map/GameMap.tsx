@@ -396,11 +396,6 @@ export default function GameMap() {
       .addTo(map);
     logger.info('GameMap', `Player marker CREATED at ${station.name} (role=${playerRole})`);
 
-    map.flyTo({
-      center: [station.lng, station.lat],
-      zoom: Math.max(map.getZoom(), 6),
-      duration: 500,
-    });
   }, [playerStationId, playerRole, mapLoaded]);
 
   // Attach player marker to active train during transit
