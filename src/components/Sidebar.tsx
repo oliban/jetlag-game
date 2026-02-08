@@ -5,6 +5,7 @@ import { canAskCategory, getCooldownRemaining } from '../questions/cooldown';
 import { stationMatchesConstraints } from '../engine/seekerLoop';
 import { canAfford, getCost } from '../engine/coinSystem';
 import { findTransitTrainDwelling } from '../engine/transitPosition';
+import { getRoutes } from '../engine/trainRoutes';
 
 const TRAIN_TYPE_COLORS: Record<string, string> = {
   express: 'text-yellow-400',
@@ -97,6 +98,16 @@ export default function Sidebar() {
           const canGetOff = onTrain && playerTransit.toStationId !== playerTransit.destinationStationId;
           const exiting = onTrain && playerTransit.toStationId === playerTransit.destinationStationId;
           const isDwelling = onTrain && findTransitTrainDwelling(playerTransit, clock.gameMinutes);
+          // Check if next stop is the route terminus (can't stay on train past terminus)
+          const isRoutTerminus = (() => {
+            if (!playerTransit.routeId) return true;
+            const route = getRoutes().find(r => r.id === playerTransit.routeId);
+            if (!route) return true;
+            const lastFwd = route.stations[route.stations.length - 1];
+            const lastRev = route.stations[0];
+            return playerTransit.toStationId === lastFwd || playerTransit.toStationId === lastRev;
+          })();
+          const canStay = exiting && !isRoutTerminus;
           const bgClass = waiting ? 'bg-yellow-900/50 border-yellow-700' : exiting ? 'bg-red-900/50 border-red-700' : isDwelling ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700';
           const labelClass = waiting ? 'text-yellow-400' : exiting ? 'text-red-400' : isDwelling ? 'text-green-400' : 'text-blue-400';
           const label = waiting ? 'Waiting for Departure' : exiting ? 'Exiting at Next Stop' : isDwelling ? 'Stopped at Station' : 'In Transit';
@@ -134,7 +145,7 @@ export default function Sidebar() {
                   {isDwelling ? 'Get off now!' : `Get off at ${stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}`}
                 </button>
               )}
-              {exiting && (
+              {canStay && (
                 <button
                   onClick={stayOnTrain}
                   className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-green-400 bg-green-900/30 hover:bg-green-900/50 border border-green-700/50 rounded transition-colors"
@@ -258,6 +269,15 @@ export default function Sidebar() {
         const canGetOff = onTrain && playerTransit.toStationId !== playerTransit.destinationStationId;
         const exiting = onTrain && playerTransit.toStationId === playerTransit.destinationStationId;
         const isDwelling = onTrain && findTransitTrainDwelling(playerTransit, clock.gameMinutes);
+        const isRouteTerminus = (() => {
+          if (!playerTransit.routeId) return true;
+          const route = getRoutes().find(r => r.id === playerTransit.routeId);
+          if (!route) return true;
+          const lastFwd = route.stations[route.stations.length - 1];
+          const lastRev = route.stations[0];
+          return playerTransit.toStationId === lastFwd || playerTransit.toStationId === lastRev;
+        })();
+        const canStay = exiting && !isRouteTerminus;
         const bgClass = waiting ? 'bg-yellow-900/50 border-yellow-700' : exiting ? 'bg-red-900/50 border-red-700' : isDwelling ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700';
         const labelClass = waiting ? 'text-yellow-400' : exiting ? 'text-red-400' : isDwelling ? 'text-green-400' : 'text-blue-400';
         const label = waiting ? 'Waiting for Departure' : exiting ? 'Exiting at Next Stop' : isDwelling ? 'Stopped at Station' : 'In Transit';
@@ -295,7 +315,7 @@ export default function Sidebar() {
                 {isDwelling ? 'Get off now!' : `Get off at ${stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}`}
               </button>
             )}
-            {exiting && (
+            {canStay && (
               <button
                 onClick={stayOnTrain}
                 className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-green-400 bg-green-900/30 hover:bg-green-900/50 border border-green-700/50 rounded transition-colors"
