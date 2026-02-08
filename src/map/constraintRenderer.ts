@@ -1,4 +1,3 @@
-import type mapboxgl from 'mapbox-gl';
 import type { Constraint, CircleConstraint, HalfPlaneConstraint, TextConstraint } from '../engine/constraints';
 
 // Bounding box covering all of Europe and surroundings

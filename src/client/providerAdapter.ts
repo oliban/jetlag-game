@@ -6,8 +6,6 @@ import {
 } from './providers/claude.ts';
 import {
   sendOpenAIMessage,
-  buildOpenAIToolResultMessage,
-  buildOpenAIAssistantMessage,
 } from './providers/openai.ts';
 
 export type ProviderType = 'claude' | 'openai';
@@ -44,7 +42,7 @@ export async function sendProviderMessage(
       return sendClaudeMessage(
         { model: config.model },
         systemPrompt,
-        conversationHistory,
+        conversationHistory as Parameters<typeof sendClaudeMessage>[2],
         tools,
       );
     case 'openai':

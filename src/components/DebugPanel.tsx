@@ -138,7 +138,7 @@ export default function DebugPanel() {
                       {formatTimestamp(entry.timestamp)}
                     </span>
                   </div>
-                  {entry.args && (
+                  {entry.args != null && (
                     <div>
                       <span className="text-gray-500">args:</span>
                       <JsonBlock data={entry.args} />

@@ -1,11 +1,8 @@
 import type { ProviderConfig, ConversationMessage } from '../client/providerAdapter.ts';
 import {
   sendProviderMessage,
-  buildToolResultMessage,
-  buildAssistantMessage,
 } from '../client/providerAdapter.ts';
-import type { AnthropicToolDefinition, ToolCall, ToolResult, SeekerAction } from '../client/aiClient.ts';
-import { getToolDefinitions } from '../client/aiClient.ts';
+import type { SeekerAction, AnthropicToolDefinition } from '../client/aiClient.ts';
 import { buildSeekerSystemPrompt } from '../client/systemPrompts.ts';
 import type { SeekerProposal, ConsensusResult } from './consensus.ts';
 import { resolveConsensus } from './consensus.ts';
@@ -15,12 +12,10 @@ import { evaluateQuestion } from '../questions/evaluators.ts';
 import {
   canAskCategory,
   recordQuestion,
-  getCooldownRemaining,
   type CooldownTracker,
 } from '../questions/cooldown.ts';
 import type { Constraint } from './constraints.ts';
 import { stationMatchesConstraints } from './seekerLoop.ts';
-import type { SeekerViewState } from '../mcp/stateFilter.ts';
 import { checkWinCondition, checkTimeLimit } from './seekingPhase.ts';
 import { canAfford, spendCoins, getCost, type CoinBudget } from './coinSystem.ts';
 import { getTravelInfo } from './trainSchedule.ts';
@@ -93,7 +88,7 @@ async function getProposal(
 
   const result = await sendProviderMessage(config, systemPrompt, history, tools);
 
-  const proposalCall = result.toolCalls.find((tc) => tc.name === 'propose_action');
+  const proposalCall = result.toolCalls.find((tc) => (tc.name as string) === 'propose_action');
   if (!proposalCall) {
     // Default to a no-op if the AI doesn't propose
     return {
@@ -117,7 +112,7 @@ function buildStateMessage(
   seekerStationId: string,
   gameMinutes: number,
   constraints: Constraint[],
-  questionsAsked: Array<{ question: string; answer: string }>,
+  _questionsAsked: Array<{ question: string; answer: string }>,
   coinBudget: CoinBudget | null,
   cooldownTracker: CooldownTracker,
   askedQuestionIds: Set<string>,

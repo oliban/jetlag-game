@@ -1,6 +1,6 @@
 import type { Constraint } from '../engine/constraints.ts';
 import type { SeekerViewState } from '../mcp/stateFilter.ts';
-import type { Question, QuestionCategory } from '../questions/questionPool.ts';
+import type { QuestionCategory } from '../questions/questionPool.ts';
 
 // --- Tool parameter types ---
 
@@ -82,6 +82,7 @@ export interface SeekerTurnResult {
   gameOver: boolean;
   gameResult: 'seeker_wins' | 'hider_wins' | null;
   travelRoute?: TravelRouteEntry[];
+  nextActionTime?: number;
 }
 
 // --- Anthropic API tool definition format ---

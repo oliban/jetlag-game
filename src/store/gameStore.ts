@@ -14,7 +14,7 @@ import { createSeededRandom } from '../utils/random';
 import type { Constraint } from '../engine/constraints';
 import type { CooldownTracker } from '../questions/cooldown';
 import { createCooldownTracker } from '../questions/cooldown';
-import { runSeekerTurn, stationMatchesConstraints } from '../engine/seekerLoop';
+import { runSeekerTurn } from '../engine/seekerLoop';
 import { runConsensusTurn, type ConsensusLogEntry } from '../engine/consensusLoop';
 import { haversineDistance } from '../engine/geo';
 import { logger } from '../engine/logger';
@@ -23,12 +23,11 @@ import { getQuestionById, QUESTION_POOL } from '../questions/questionPool';
 import {
   canAskCategory,
   recordQuestion,
-  getCooldownRemaining,
 } from '../questions/cooldown';
 import { createCoinBudget, canAfford, spendCoins, type CoinBudget } from '../engine/coinSystem';
 import { getTravelInfo } from '../engine/trainSchedule';
-import { getRoutes, getUpcomingDepartures, type TrainRoute } from '../engine/trainRoutes';
-import { findTransitTrainPosition, findTransitPosition } from '../engine/transitPosition';
+import { getRoutes, getUpcomingDepartures } from '../engine/trainRoutes';
+import { findTransitPosition } from '../engine/transitPosition';
 import type { ProviderConfig } from '../client/providerAdapter';
 import type { TravelRouteEntry } from '../client/aiClient';
 
@@ -359,11 +358,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const routes = getRoutes();
             const route = routes.find(r => r.id === playerTransit!.routeId);
             if (route) {
-              // Determine direction and find the travel time for this segment
-              const fwdIdx = route.stations.indexOf(playerStationId);
-              const revStations = [...route.stations].reverse();
-              const revIdx = revStations.indexOf(playerStationId);
-
               let segmentDuration = 0;
               const dwellTime = route.dwellTime;
 
@@ -944,13 +938,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const revFromIdx = revStations.indexOf(playerStationId);
     const revToIdx = revStations.indexOf(destinationStationId);
 
-    let direction: 'forward' | 'reverse';
     if (fwdFromIdx >= 0 && fwdToIdx >= 0 && fwdToIdx > fwdFromIdx) {
-      direction = 'forward';
       stopTimes = route.stopTimes;
       routeStations = route.stations;
     } else if (revFromIdx >= 0 && revToIdx >= 0 && revToIdx > revFromIdx) {
-      direction = 'reverse';
       stopTimes = route.reverseStopTimes;
       routeStations = revStations;
     } else {

@@ -5,7 +5,7 @@ primary_region = "ams"
   dockerfile = "Dockerfile"
 
 [build.args]
-  VITE_MAPBOX_TOKEN = ""
+  VITE_MAPBOX_TOKEN = "pk.eyJ1Ijoib2xpYmFuaXVzIiwiYSI6ImNtanN1NW43bjJ2MjAzbHF5bXh6MXRyamQifQ.CPUPBHveuB0QMo6wX2x-hA"
 
 [env]
   NODE_ENV = "production"

@@ -346,7 +346,7 @@ export default function GameMap() {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
-    const handler = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+    const handler = (e: mapboxgl.MapMouseEvent) => {
       if (!e.features?.[0]) return;
       handleStationClick(e.features[0].properties!.id);
     };

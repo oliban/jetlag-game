@@ -84,11 +84,11 @@ if (process.env.NODE_ENV === "production") {
 
   app.use(express.static(distPath));
 
-  app.get("*", (_req, res) => {
+  app.get("{*path}", (_req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
   });
 }
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+app.listen(Number(port), "0.0.0.0", () => {
+  console.log(`Server listening on 0.0.0.0:${port}`);
 });

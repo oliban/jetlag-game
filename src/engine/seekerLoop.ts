@@ -1,6 +1,6 @@
 import type { Constraint } from './constraints.ts';
 import { haversineDistance } from './geo.ts';
-import type { SeekerViewState } from '../mcp/stateFilter.ts';
+// SeekerViewState type used for runtime structure only
 import type {
   SeekerAction,
   SeekerTurnResult,
@@ -360,8 +360,8 @@ export async function runSeekerTurn(
             }
           }
 
-          const state: Record<string, unknown> = {
-            phase: 'seeking',
+          const state = {
+            phase: 'seeking' as const,
             seekerStationId: currentSeekerStation,
             seekerStationName: seekerStation?.name ?? currentSeekerStation,
             seekerCountry: seekerStation?.country ?? '',
@@ -372,14 +372,9 @@ export async function runSeekerTurn(
             candidateStations,
             visitedStations: Array.from(allVisited).map(id => stations[id]?.name ?? id),
             eliminatedByVisit: eliminatedByVisit.length,
+            ...(Object.keys(neighborTravelInfo).length > 0 ? { neighborTravelInfo } : {}),
+            ...(currentCoins ? { coinBudget: currentCoins } : {}),
           };
-
-          if (Object.keys(neighborTravelInfo).length > 0) {
-            state.neighborTravelInfo = neighborTravelInfo;
-          }
-          if (currentCoins) {
-            state.coinBudget = currentCoins;
-          }
 
           resultContent = JSON.stringify(state);
           onAction({ type: 'get_my_state', state });

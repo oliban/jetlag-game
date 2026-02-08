@@ -50,9 +50,6 @@ export default function DepartureBoardModal() {
   const seekerStationId = useGameStore((s) => s.seekerStationId);
   const seekerTransit = useGameStore((s) => s.seekerTransit);
 
-  // Expand/collapse state per departure row
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-
   // Drag state
   const [pos, setPos] = useState<{ x: number; y: number }>({ x: -1, y: -1 });
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -137,7 +134,6 @@ export default function DepartureBoardModal() {
   const handleBoard = canTravel
     ? (dep: RouteDeparture, stopStationId: string) => {
         travelViaRoute(dep.route.id, stopStationId, dep.departureTime);
-        setExpandedIdx(null);
       }
     : undefined;
 
@@ -182,7 +178,7 @@ export default function DepartureBoardModal() {
         </div>
 
         {/* Departure rows */}
-        {departures.map((dep, idx) => {
+        {departures.map((dep) => {
           const tl = TRAIN_TYPE_LABELS[dep.route.trainType];
           const routeDesc = formatRouteDesc(dep.remainingStops, stations);
           const minsUntil = Math.max(0, Math.ceil(dep.departureTime - clock.gameMinutes));
@@ -197,8 +193,6 @@ export default function DepartureBoardModal() {
             ? dep.remainingStops[dep.remainingStops.length - 1].arrivalMin
             : dep.departureTime;
           const blocked = playerRole === 'hider' && phase === 'hiding' && lastArrival > HIDING_TIME_LIMIT;
-          const isExpanded = expandedIdx === idx;
-
           // Check if this is the currently selected departure
           const isSelected = waitingForDeparture && activeTransit?.routeId === dep.route.id
             && activeTransit?.departureTime === dep.departureTime;
@@ -208,7 +202,11 @@ export default function DepartureBoardModal() {
           return (
             <div key={`${dep.route.id}-${dep.direction}-${dep.departureTime}`}>
               <div
-                onClick={rowClickable ? () => setExpandedIdx(isExpanded ? null : idx) : undefined}
+                onClick={rowClickable ? () => {
+                  // Always board to the terminus (last stop) — player can exit early via "Get off at next station"
+                  const lastStop = dep.remainingStops[dep.remainingStops.length - 1];
+                  handleBoard!(dep, lastStop.stationId);
+                } : undefined}
                 className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.4rem_2.4rem] px-3 py-1 border-b border-[#0a1a3a] items-center ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${rowClickable ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
               >
                 <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : 'text-white'}`}>
@@ -231,44 +229,6 @@ export default function DepartureBoardModal() {
                 </span>
               </div>
 
-              {/* Expanded stop picker */}
-              {isExpanded && (
-                <div className="bg-[#0a1a3a]/60 border-b border-[#0c2a52]">
-                  {dep.remainingStops.map((stop, sIdx) => {
-                    const stopStation = stations[stop.stationId];
-                    const stopName = stopStation?.name ?? stop.stationId;
-                    const isLast = sIdx === dep.remainingStops.length - 1;
-                    const stopBlocked = playerRole === 'hider' && phase === 'hiding' && stop.arrivalMin > HIDING_TIME_LIMIT;
-                    const connector = isLast ? '\u2514' : '\u251C';
-
-                    return (
-                      <div
-                        key={stop.stationId}
-                        className={`flex items-center px-3 py-0.5 text-xs ${stopBlocked ? 'opacity-40' : ''}`}
-                      >
-                        <span className="text-gray-600 w-4 shrink-0">{connector}</span>
-                        <span className={`truncate flex-1 ${stopBlocked ? 'text-gray-600' : 'text-gray-300'}`}>
-                          {stopName}
-                        </span>
-                        <span className={`tabular-nums mr-2 ${stopBlocked ? 'text-gray-600' : 'text-gray-500'}`}>
-                          arr {formatGameTime(stop.arrivalMin)}
-                        </span>
-                        {handleBoard && !stopBlocked && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleBoard(dep, stop.stationId);
-                            }}
-                            className="text-[10px] font-bold text-[#ffbf40] bg-[#ffbf40]/10 hover:bg-[#ffbf40]/25 rounded px-1.5 py-0.5 transition-colors"
-                          >
-                            Board
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           );
         })}
