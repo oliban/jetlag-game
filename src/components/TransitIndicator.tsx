@@ -1,7 +1,8 @@
 import type { TransitState, Station } from '../types/game';
 import { findTransitTrainDwelling } from '../engine/transitPosition';
 import { getRoutes } from '../engine/trainRoutes';
-import { formatDuration } from '../engine/gameLoop';
+import { formatDuration, formatGameTime } from '../engine/gameLoop';
+import { getStations } from '../data/graph';
 
 const TRAIN_TYPE_COLORS: Record<string, string> = {
   express: 'text-yellow-400',
@@ -15,6 +16,7 @@ interface TransitIndicatorProps {
   stations: Record<string, Station>;
   getOffAtNextStation: () => void;
   stayOnTrain: () => void;
+  queuedRoute?: { routeId: string; destinationStationId: string; departureTime: number } | null;
 }
 
 export default function TransitIndicator({
@@ -23,6 +25,7 @@ export default function TransitIndicator({
   stations,
   getOffAtNextStation,
   stayOnTrain,
+  queuedRoute,
 }: TransitIndicatorProps) {
   const waiting = clock.gameMinutes < playerTransit.departureTime;
   const onTrain = !waiting;
@@ -105,6 +108,26 @@ export default function TransitIndicator({
           Stay on train
         </button>
       )}
+      {queuedRoute && (() => {
+        const qRoute = getRoutes().find(r => r.id === queuedRoute.routeId);
+        const stationMap = getStations();
+        const destName = stationMap[queuedRoute.destinationStationId]?.name ?? queuedRoute.destinationStationId;
+        return (
+          <div className="mt-2 pt-2 border-t border-gray-700/50">
+            <p className="text-[10px] text-purple-400 uppercase tracking-wide font-medium">Queued Connection</p>
+            {qRoute && (
+              <p className="text-xs text-gray-500">
+                <span className="font-mono text-gray-300">{qRoute.id}</span>
+                <span className="mx-1">·</span>
+                <span className="text-gray-400">{qRoute.operator}</span>
+              </p>
+            )}
+            <p className="text-xs text-gray-300">
+              To {destName} · departs {formatGameTime(queuedRoute.departureTime)}
+            </p>
+          </div>
+        );
+      })()}
     </div>
   );
 }

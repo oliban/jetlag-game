@@ -47,6 +47,7 @@ export default function Sidebar() {
   const seekerTravelQueue = useGameStore((s) => s.seekerTravelQueue);
   const getOffAtNextStation = useGameStore((s) => s.getOffAtNextStation);
   const stayOnTrain = useGameStore((s) => s.stayOnTrain);
+  const queuedRoute = useGameStore((s) => s.queuedRoute);
 
   if (phase === 'setup' || !playerStationId) return null;
 
@@ -90,6 +91,7 @@ export default function Sidebar() {
             stations={stations}
             getOffAtNextStation={getOffAtNextStation}
             stayOnTrain={stayOnTrain}
+            queuedRoute={queuedRoute}
           />
         )}
 
@@ -204,6 +206,7 @@ export default function Sidebar() {
           stations={stations}
           getOffAtNextStation={getOffAtNextStation}
           stayOnTrain={stayOnTrain}
+          queuedRoute={queuedRoute}
         />
       )}
 
