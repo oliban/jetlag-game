@@ -286,24 +286,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
           nextArrivalTime: stopInfo.arrivalMin,
         },
       });
-    } else {
-      // Fallback: use legacy travel info
-      const travelInfo = getTravelInfo(playerStationId, stationId, clock.gameMinutes);
-      if (travelInfo) {
-        const HIDING_TIME_LIMIT = 240;
-        if (phase === 'hiding' && travelInfo.arrivalTime > HIDING_TIME_LIMIT) return;
-        set({
-          playerTransit: {
-            fromStationId: playerStationId,
-            toStationId: stationId,
-            departureTime: travelInfo.departureTime,
-            arrivalTime: travelInfo.arrivalTime,
-            trainType: travelInfo.trainType,
-          },
-        });
-      } else {
-        set({ playerStationId: stationId });
-      }
     }
   },
 

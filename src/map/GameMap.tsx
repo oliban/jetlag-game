@@ -406,6 +406,19 @@ export default function GameMap() {
     const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
     if (pos) {
       playerMarkerRef.current.setLngLat(pos);
+    } else {
+      // Fallback: linearly interpolate between origin and destination
+      const stationMap = getStations();
+      const from = stationMap[playerTransit.fromStationId];
+      const to = stationMap[playerTransit.toStationId];
+      if (from && to) {
+        const duration = playerTransit.arrivalTime - playerTransit.departureTime;
+        const elapsed = clock.gameMinutes - playerTransit.departureTime;
+        const t = duration > 0 ? Math.min(1, Math.max(0, elapsed / duration)) : 1;
+        const lng = from.lng + (to.lng - from.lng) * t;
+        const lat = from.lat + (to.lat - from.lat) * t;
+        playerMarkerRef.current.setLngLat([lng, lat]);
+      }
     }
   }, [playerTransit, clock.gameMinutes]);
 
