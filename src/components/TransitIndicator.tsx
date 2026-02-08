@@ -1,6 +1,7 @@
 import type { TransitState, Station } from '../types/game';
 import { findTransitTrainDwelling } from '../engine/transitPosition';
 import { getRoutes } from '../engine/trainRoutes';
+import { formatDuration } from '../engine/gameLoop';
 
 const TRAIN_TYPE_COLORS: Record<string, string> = {
   express: 'text-yellow-400',
@@ -84,8 +85,8 @@ export default function TransitIndicator({
       <p className="text-xs text-gray-400">
         <span className={TRAIN_TYPE_COLORS[playerTransit.trainType]}>{playerTransit.trainType}</span>
         {waiting
-          ? <>{' '}— Departs in {waitLeft}min, then {travelLeft}min travel</>
-          : <>{' '}— Arriving in {Math.ceil(playerTransit.arrivalTime - clock.gameMinutes)}min</>
+          ? <>{' '}— Departs in {formatDuration(waitLeft)}, then {formatDuration(travelLeft)} travel</>
+          : <>{' '}— Arriving in {formatDuration(playerTransit.arrivalTime - clock.gameMinutes)}</>
         }
       </p>
       {canGetOff && (

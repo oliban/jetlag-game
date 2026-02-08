@@ -652,14 +652,18 @@ export default function GameMap() {
       return;
     }
 
-    // Use train position if in transit
+    // Use interpolated position if in transit
     let centerLng = station.lng;
     let centerLat = station.lat;
     if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) {
-      const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
-      if (pos) {
-        [centerLng, centerLat] = pos;
-      }
+      const from = stationMap[playerTransit.fromStationId];
+      const to = stationMap[playerTransit.toStationId];
+      const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+      const segDuration = segEnd - playerTransit.segmentDepartureTime;
+      const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+      const progress = segDuration > 0 ? Math.min(1, elapsed / segDuration) : 0;
+      centerLat = from.lat + (to.lat - from.lat) * progress;
+      centerLng = from.lng + (to.lng - from.lng) * progress;
     }
     const radiusKm = hoveredRadarRadius;
     const points = 64;

@@ -46,6 +46,7 @@ export interface TrainRoute {
   stopTimes: StopTime[];   // forward direction precomputed
   reverseStopTimes: StopTime[]; // reverse direction precomputed
   totalDuration: number;   // full trip, origin to terminus (same both directions)
+  operator: string;        // train operating company
 }
 
 export interface RouteDeparture {
@@ -102,6 +103,49 @@ function buildStopTimes(
   }
 
   return stops;
+}
+
+/** Determine train operator based on countries the route passes through */
+function assignOperator(
+  routeStations: string[],
+  trainType: TrainType,
+  stationsMap: Record<string, { country: string }>,
+): string {
+  const countries = routeStations.map(id => stationsMap[id]?.country).filter(Boolean);
+  const countrySet = new Set(countries);
+
+  // Cross-border express routes get special operators
+  if (trainType === 'express' && countrySet.size > 1) {
+    if (countrySet.has('United Kingdom')) return 'Eurostar';
+    if (countrySet.has('France') && countrySet.has('Belgium')) return 'Thalys';
+    if (countrySet.has('France') && countrySet.has('Netherlands')) return 'Thalys';
+    if (countrySet.has('France') && countrySet.has('Switzerland')) return 'TGV Lyria';
+    if (countrySet.has('France') && countrySet.has('Spain')) return 'Renfe-SNCF';
+    if (countrySet.has('Austria') || countrySet.has('Hungary') || countrySet.has('Czech Republic')) return 'ÖBB';
+  }
+
+  // Majority country determines operator
+  const freq: Record<string, number> = {};
+  for (const c of countries) freq[c] = (freq[c] || 0) + 1;
+  const majority = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+
+  const ops: Record<string, Record<TrainType, string>> = {
+    'France':         { express: 'SNCF',        regional: 'SNCF TER',     local: 'Transilien' },
+    'Germany':        { express: 'DB',           regional: 'DB Regio',     local: 'S-Bahn' },
+    'Italy':          { express: 'Trenitalia',   regional: 'Trenitalia',   local: 'Trenord' },
+    'Spain':          { express: 'Renfe',        regional: 'Renfe',        local: 'Cercanías' },
+    'United Kingdom': { express: 'LNER',         regional: 'CrossCountry', local: 'Northern' },
+    'Netherlands':    { express: 'NS',           regional: 'NS',           local: 'NS Sprinter' },
+    'Belgium':        { express: 'SNCB',         regional: 'SNCB',         local: 'SNCB' },
+    'Switzerland':    { express: 'SBB',          regional: 'SBB',          local: 'SBB' },
+    'Austria':        { express: 'ÖBB',          regional: 'ÖBB',          local: 'ÖBB' },
+    'Czech Republic': { express: 'ČD',           regional: 'ČD',           local: 'ČD' },
+    'Poland':         { express: 'PKP',          regional: 'PKP',          local: 'PKP Regio' },
+    'Hungary':        { express: 'MÁV',          regional: 'MÁV',          local: 'MÁV' },
+    'Denmark':        { express: 'DSB',          regional: 'DSB',          local: 'DSB' },
+  };
+
+  return ops[majority]?.[trainType] ?? 'EuroRail';
 }
 
 /** Greedy corridor extraction — generate multi-stop routes from connection graph */
@@ -184,6 +228,7 @@ function generateRoutes(): TrainRoute[] {
       stopTimes,
       reverseStopTimes,
       totalDuration,
+      operator: assignOperator(routeStations, trainType, stations),
     });
   }
 
@@ -221,6 +266,7 @@ function generateRoutes(): TrainRoute[] {
       stopTimes,
       reverseStopTimes,
       totalDuration,
+      operator: assignOperator(routeStations, trainType, stations),
     });
   }
 

@@ -64,3 +64,12 @@ export function formatGameTime(gameMinutes: number): string {
   const mins = Math.floor(gameMinutes % 60);
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
+
+/** Format a duration in minutes as compact "Xh Ym" or just "Ym" */
+export function formatDuration(minutes: number): string {
+  const m = Math.ceil(minutes);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${h}h` : `${h}h ${rem.toString().padStart(2, '0')}m`;
+}

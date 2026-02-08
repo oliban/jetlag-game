@@ -27,7 +27,6 @@ import {
 import { createCoinBudget, canAfford, spendCoins, type CoinBudget } from '../engine/coinSystem';
 import { getTravelInfo } from '../engine/trainSchedule';
 import { getRoutes, getUpcomingDepartures } from '../engine/trainRoutes';
-import { findTransitPosition } from '../engine/transitPosition';
 import type { ProviderConfig } from '../client/providerAdapter';
 import type { TravelRouteEntry } from '../client/aiClient';
 
@@ -110,6 +109,37 @@ export interface GameStore {
   stayOnTrain: () => void;
 }
 
+/**
+ * Compute the seeker's current position for question evaluation.
+ * Uses segmentDepartureTime / nextArrivalTime to interpolate directly —
+ * no ActiveTrain matching needed.
+ */
+function getSeekerPos(state: { playerStationId: string | null; playerTransit: TransitState | null; clock: GameClock }): string | { lat: number; lng: number; country: string } {
+  const { playerStationId, playerTransit, clock } = state;
+  if (!playerStationId) return '';
+
+  // Not in transit — use station directly
+  if (!playerTransit || clock.gameMinutes < playerTransit.segmentDepartureTime) {
+    return playerStationId;
+  }
+
+  const stations = getStations();
+  const from = stations[playerTransit.fromStationId];
+  const to = stations[playerTransit.toStationId];
+  if (!from || !to) return playerStationId;
+
+  const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+  const segDuration = segEnd - playerTransit.segmentDepartureTime;
+  const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+  const progress = segDuration > 0 ? Math.min(1, elapsed / segDuration) : 0;
+
+  return {
+    lat: from.lat + (to.lat - from.lat) * progress,
+    lng: from.lng + (to.lng - from.lng) * progress,
+    country: progress < 0.5 ? from.country : to.country,
+  };
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   phase: 'setup',
   playerRole: 'hider',
@@ -189,7 +219,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const hiderStation = stations[bestHider];
       logger.info('gameStore', `Seeker mode started. Player (seeker) at ${playerStation?.name} (${playerStart}), ${Math.round(bestDist)}km from hider, seed=${s}`);
-      logger.debug('gameStore', `AI hider at ${hiderStation?.name} (${bestHider})`);
+      // Intentionally not logging hider position (anti-cheat)
 
       set({
         phase: 'seeking',
@@ -277,6 +307,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           fromStationId: playerStationId,
           toStationId: stationId,
           departureTime: dep.departureTime,
+          segmentDepartureTime: dep.departureTime,
           arrivalTime: stopInfo.arrivalMin,
           trainType: route.trainType,
           routeId: route.id,
@@ -375,11 +406,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 }
               }
 
-              const nextArrival = playerTransit!.nextArrivalTime! + dwellTime + segmentDuration;
+              const segDeparture = playerTransit!.nextArrivalTime! + dwellTime;
+              const nextArrival = segDeparture + segmentDuration;
               playerTransit = {
                 ...playerTransit,
                 fromStationId: playerStationId,
                 toStationId: nextStationId,
+                segmentDepartureTime: segDeparture,
                 nextArrivalTime: nextArrival,
               };
             } else {
@@ -423,6 +456,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           fromStationId: next.fromStationId,
           toStationId: next.stationId,
           departureTime: next.departureTime,
+          segmentDepartureTime: next.departureTime,
           arrivalTime: next.arrivalTime,
           trainType: next.trainType as 'express' | 'regional' | 'local',
         };
@@ -494,8 +528,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         hasAnthropicProvider: !!data.hasAnthropic,
         hasOpenaiProvider: !!data.hasOpenai,
       });
-    } catch (error) {
-      logger.error('gameStore', 'Failed to fetch provider config', error);
+    } catch {
+      // Server not running — detect keys from Vite env vars
+      set({
+        hasAnthropicProvider: !!import.meta.env.VITE_ANTHROPIC_API_KEY,
+        hasOpenaiProvider: !!import.meta.env.VITE_OPENAI_API_KEY,
+      });
     }
   },
 
@@ -663,6 +701,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             fromStationId: first.fromStationId,
             toStationId: first.stationId,
             departureTime: first.departureTime,
+            segmentDepartureTime: first.departureTime,
             arrivalTime: first.arrivalTime,
             trainType: first.trainType,
           };
@@ -755,6 +794,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             fromStationId: first.fromStationId,
             toStationId: first.stationId,
             departureTime: first.departureTime,
+            segmentDepartureTime: first.departureTime,
             arrivalTime: first.arrivalTime,
             trainType: first.trainType,
           };
@@ -808,14 +848,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Check coin budget
     if (state.coinBudget && !canAfford(state.coinBudget, question.category)) return;
 
-    // Compute seeker position (snap to actual train if in transit)
-    let seekerPos: string | { lat: number; lng: number; country?: string } = state.playerStationId;
-    if (state.playerTransit && state.clock.gameMinutes >= state.playerTransit.departureTime) {
-      const pos = findTransitPosition(state.playerTransit, state.clock.gameMinutes);
-      if (pos) {
-        seekerPos = pos;
-      }
-    }
+    // Compute seeker position (use actual transit position if on a train)
+    const seekerPos = getSeekerPos(state);
 
     // Evaluate
     const result = evaluateQuestion(question, state.hidingZone.stationId, seekerPos);
@@ -868,6 +902,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           fromStationId: state.playerStationId,
           toStationId: stationId,
           departureTime: dep.departureTime,
+          segmentDepartureTime: dep.departureTime,
           arrivalTime: stopInfo.arrivalMin,
           trainType: route.trainType,
           routeId: route.id,
@@ -886,6 +921,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             fromStationId: state.playerStationId,
             toStationId: stationId,
             departureTime: travelInfo.departureTime,
+            segmentDepartureTime: travelInfo.departureTime,
             arrivalTime: travelInfo.arrivalTime,
             trainType: travelInfo.trainType,
           },
@@ -975,6 +1011,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         fromStationId: playerStationId,
         toStationId: travelStations[1],
         departureTime,
+        segmentDepartureTime: departureTime,
         arrivalTime: finalArrival,
         trainType: route.trainType,
         routeId,

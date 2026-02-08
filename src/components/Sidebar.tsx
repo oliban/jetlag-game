@@ -5,6 +5,7 @@ import { canAskCategory, getCooldownRemaining } from '../questions/cooldown';
 import { stationMatchesConstraints } from '../engine/seekerLoop';
 import { canAfford, getCost } from '../engine/coinSystem';
 import TransitIndicator from './TransitIndicator';
+import { formatDuration } from '../engine/gameLoop';
 
 const CATEGORY_STYLE: Record<string, { color: string; dim: string; border: string; bg: string }> = {
   radar:     { color: 'text-green-400',  dim: 'text-green-400/60',  border: 'border-green-700/50', bg: 'bg-green-900/20' },
@@ -210,13 +211,11 @@ export default function Sidebar() {
       {phase === 'hiding' && (() => {
         const HIDING_TIME_LIMIT = 240; // 4 game-hours
         const timeLeft = Math.max(0, Math.ceil(HIDING_TIME_LIMIT - clock.gameMinutes));
-        const hoursLeft = Math.floor(timeLeft / 60);
-        const minsLeft = timeLeft % 60;
         const onTheTrain = playerTransit && clock.gameMinutes >= playerTransit.departureTime;
         return (
           <>
             <div className="text-sm text-gray-400 mb-2">
-              Time to hide: <span className={`font-mono ${timeLeft <= 30 ? 'text-red-400 font-bold' : 'text-white'}`}>{hoursLeft}h {minsLeft.toString().padStart(2, '0')}m</span>
+              Time to hide: <span className={`font-mono ${timeLeft <= 30 ? 'text-red-400 font-bold' : 'text-white'}`}>{formatDuration(timeLeft)}</span>
             </div>
             {!onTheTrain && (
               <button
@@ -272,7 +271,7 @@ export default function Sidebar() {
                 return (
                   <div className="flex items-center gap-2 text-xs text-yellow-400">
                     <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                    Waiting for train to {toName} — {waitLeft}m
+                    Waiting for train to {toName} — {formatDuration(waitLeft)}
                     {queueCount > 0 && <span className="text-gray-500">(+{queueCount} hop{queueCount > 1 ? 's' : ''})</span>}
                   </div>
                 );
@@ -281,7 +280,7 @@ export default function Sidebar() {
               return (
                 <div className="flex items-center gap-2 text-xs text-blue-400">
                   <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                  In transit to {toName} — {minsLeft}m
+                  In transit to {toName} — {formatDuration(minsLeft)}
                   {queueCount > 0 && <span className="text-gray-500">(+{queueCount} hop{queueCount > 1 ? 's' : ''})</span>}
                 </div>
               );
@@ -291,7 +290,7 @@ export default function Sidebar() {
               return (
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                   <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" />
-                  Idle — next action in {minsLeft}m
+                  Idle — next action in {formatDuration(minsLeft)}
                 </div>
               );
             }

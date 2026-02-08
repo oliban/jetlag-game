@@ -8,6 +8,7 @@ import RoundEndScreen from './components/RoundEndScreen';
 import DepartureBoardModal from './components/DepartureBoardModal';
 import { useGameStore } from './store/gameStore';
 import { getStations } from './data/graph';
+import { formatDuration } from './engine/gameLoop';
 
 function App() {
   const phase = useGameStore((s) => s.phase);
@@ -147,16 +148,16 @@ function App() {
           if (waiting) {
             dotColor = 'bg-yellow-400';
             const waitLeft = Math.max(0, Math.ceil(seekerTransit.departureTime - clock.gameMinutes));
-            label = `Waiting for train to ${toName} — departs in ${waitLeft}m`;
+            label = `Waiting for train to ${toName} — departs in ${formatDuration(waitLeft)}`;
           } else {
             dotColor = 'bg-blue-400';
             const minsLeft = Math.max(0, Math.ceil(seekerTransit.arrivalTime - clock.gameMinutes));
-            label = `In transit to ${toName} — ${minsLeft}m`;
+            label = `In transit to ${toName} — ${formatDuration(minsLeft)}`;
           }
         } else if (seekerNextActionTime > clock.gameMinutes) {
           dotColor = 'bg-gray-400';
           const minsLeft = Math.max(0, Math.ceil(seekerNextActionTime - clock.gameMinutes));
-          label = `Waiting for next action — ${minsLeft}m`;
+          label = `Waiting for next action — ${formatDuration(minsLeft)}`;
         }
 
         return (

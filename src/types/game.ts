@@ -20,9 +20,13 @@ export type TrainType = 'express' | 'regional' | 'local';
 export interface TransitState {
   fromStationId: string;
   toStationId: string;         // immediate next station
-  departureTime: number;       // game minutes
+  departureTime: number;       // game minutes (original boarding time)
   arrivalTime: number;         // arrival at FINAL destination (game minutes)
   trainType: TrainType;
+  /** When the current segment started (departure from fromStationId).
+   *  For the first segment this equals departureTime.
+   *  Updated each time the train advances to the next segment. */
+  segmentDepartureTime: number;
   // Route fields for multi-stop travel:
   routeId?: string;
   routeStations?: string[];    // full route stations in travel direction
