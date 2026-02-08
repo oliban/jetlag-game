@@ -20,6 +20,7 @@ export interface ActiveTrain {
   bearing: number;
   dwelling: boolean;       // stopped at intermediate station
   dwellingStationId: string | null;
+  country: string;         // origin station's country (for coloring)
 }
 
 let cachedTrains: { gameMinutes: number; trains: ActiveTrain[] } | null = null;
@@ -106,6 +107,7 @@ function resolveTrainPosition(
   stationMap: ReturnType<typeof getStations>,
 ): ActiveTrain | null {
   const finalStationId = dirStations[dirStations.length - 1];
+  const country = stationMap[dirStations[0]]?.country ?? 'Unknown';
 
   for (let i = 0; i < stopTimes.length - 1; i++) {
     const currentStop = stopTimes[i];
@@ -131,6 +133,7 @@ function resolveTrainPosition(
         bearing: computeSegmentBearing(currentStop.stationId, nextStop.stationId, stationMap),
         dwelling: true,
         dwellingStationId: currentStop.stationId,
+        country,
       };
     }
 
@@ -162,6 +165,7 @@ function resolveTrainPosition(
         bearing: computeBearing(fromSt.lat, fromSt.lng, toSt.lat, toSt.lng),
         dwelling: false,
         dwellingStationId: null,
+        country,
       };
     }
   }
@@ -187,6 +191,7 @@ function resolveTrainPosition(
       bearing: 0,
       dwelling: false,
       dwellingStationId: null,
+      country,
     };
   }
 

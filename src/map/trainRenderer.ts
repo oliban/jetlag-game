@@ -3,18 +3,7 @@ import type { TrainType } from '../types/game';
 import type { StationMap } from '../data/graph';
 import { getActiveTrains } from '../engine/activeTrains';
 import { getRoutes } from '../engine/trainRoutes';
-
-const TRAIN_COLORS: Record<TrainType, string> = {
-  express: '#eab308',
-  regional: '#3b82f6',
-  local: '#9ca3af',
-};
-
-const ENGINE_COLORS: Record<TrainType, string> = {
-  express: '#fde047',
-  regional: '#93c5fd',
-  local: '#d1d5db',
-};
+import { RAILWAY_COLORS, TRAIN_COLORS } from '../theme/colors';
 
 const TRAIN_CARS: Record<TrainType, number> = {
   express: 5,
@@ -28,14 +17,37 @@ const TRAIN_LABELS: Record<TrainType, string> = {
   local: 'Local',
 };
 
-/** Draw a multi-car train icon, return ImageData for Mapbox */
-function createTrainImage(trainType: TrainType): { width: number; height: number; data: Uint8ClampedArray } {
+/** Railway company names per country */
+const RAILWAY_NAMES: Record<string, string> = {
+  France: 'SNCF',
+  'United Kingdom': 'National Rail',
+  Germany: 'DB',
+  Netherlands: 'NS',
+  Belgium: 'SNCB',
+  Switzerland: 'SBB',
+  Austria: 'ÖBB',
+  Italy: 'Trenitalia',
+  Spain: 'Renfe',
+  'Czech Republic': 'ČD',
+  Poland: 'PKP',
+  Hungary: 'MÁV',
+  Denmark: 'DSB',
+};
+
+/** All countries that have railway colors */
+const ALL_COUNTRIES = Object.keys(RAILWAY_COLORS);
+
+/** Draw a multi-car train icon colored by country, return ImageData for Mapbox */
+function createTrainImage(trainType: TrainType, country: string): { width: number; height: number; data: Uint8ClampedArray } {
   const pixelRatio = 2;
   const carWidth = 4;
   const carHeight = 12;
   const gap = 1;
   const numCars = TRAIN_CARS[trainType];
-  const color = TRAIN_COLORS[trainType];
+
+  const railwayColor = RAILWAY_COLORS[country];
+  const color = railwayColor?.train ?? TRAIN_COLORS[trainType];
+  const engineColor = railwayColor?.engine ?? color;
 
   const totalHeight = numCars * carHeight + (numCars - 1) * gap;
   const padding = 2;
@@ -49,7 +61,6 @@ function createTrainImage(trainType: TrainType): { width: number; height: number
   const ctx = canvas.getContext('2d')!;
   ctx.scale(pixelRatio, pixelRatio);
 
-  const engineColor = ENGINE_COLORS[trainType];
   for (let i = 0; i < numCars; i++) {
     const y = padding + i * (carHeight + gap);
     const r = 1.5;
@@ -66,12 +77,14 @@ function createTrainImage(trainType: TrainType): { width: number; height: number
   return { width: canvasW, height: canvasH, data: imageData.data };
 }
 
-/** Register train icons on the map (call once on load) */
+/** Register train icons on the map: one per type × country (call once on load) */
 export function addTrainIcons(map: mapboxgl.Map): void {
   const types: TrainType[] = ['express', 'regional', 'local'];
   for (const t of types) {
-    const img = createTrainImage(t);
-    map.addImage(`train-${t}`, img, { pixelRatio: 2 });
+    for (const country of ALL_COUNTRIES) {
+      const img = createTrainImage(t, country);
+      map.addImage(`train-${t}-${country}`, img, { pixelRatio: 2 });
+    }
   }
 }
 
@@ -90,7 +103,7 @@ export function initTrainLayer(map: mapboxgl.Map): void {
       type: 'symbol',
       source: 'active-trains',
       layout: {
-        'icon-image': ['concat', 'train-', ['get', 'trainType']],
+        'icon-image': ['concat', 'train-', ['get', 'trainType'], '-', ['get', 'country']],
         'icon-rotate': ['get', 'bearing'],
         'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
@@ -187,6 +200,7 @@ export function updateTrainPositions(
       id: train.id,
       routeId: train.routeId,
       trainType: train.trainType,
+      country: train.country,
       bearing: train.bearing,
       progress: train.progress,
       stations: JSON.stringify(train.stations),
@@ -243,7 +257,9 @@ export function initTrainHover(
 
     const props = e.features[0].properties!;
     const trainType = props.trainType as TrainType;
-    const color = TRAIN_COLORS[trainType];
+    const trainCountry = props.country as string;
+    const color = RAILWAY_COLORS[trainCountry]?.train ?? TRAIN_COLORS[trainType];
+    const railwayName = RAILWAY_NAMES[trainCountry] ?? trainCountry;
     const label = TRAIN_LABELS[trainType];
     const speed = props.speed as number;
     const dwelling = props.dwelling;
@@ -281,7 +297,7 @@ export function initTrainHover(
     const html = `
       <div style="font-size:13px;line-height:1.4;color:#e2e8f0;">
         <div style="font-weight:600;">${routeLine}</div>
-        <div style="color:${color};font-size:11px;margin-top:2px;">${routeId} \u00b7 ${label} \u00b7 ${speed} km/h</div>
+        <div style="color:${color};font-size:11px;margin-top:2px;">${railwayName} \u00b7 ${label} \u00b7 ${speed} km/h</div>
         <div style="font-size:11px;margin-top:2px;color:#94a3b8;">${statusLine}</div>
       </div>
     `;

@@ -36,11 +36,28 @@ export const COUNTRY_COLORS: Record<string, { fill: string; station: string; bor
   Denmark:          { fill: '#14b8a6', station: '#2dd4bf', border: '#14b8a6' },
 };
 
-/** Train type colors */
+/** Train type colors (legacy, used for fallback) */
 export const TRAIN_COLORS: Record<TrainType, string> = {
   express: '#eab308',
   regional: '#3b82f6',
   local: '#9ca3af',
+};
+
+/** Per-country railway colors for train rendering */
+export const RAILWAY_COLORS: Record<string, { train: string; engine: string }> = {
+  France:           { train: '#B42B6D', engine: '#D45A95' },
+  'United Kingdom': { train: '#1A6B7E', engine: '#35A0B5' },
+  Germany:          { train: '#EC0016', engine: '#FF4040' },
+  Netherlands:      { train: '#FFC61E', engine: '#FFD95C' },
+  Belgium:          { train: '#2563A8', engine: '#5590D0' },
+  Switzerland:      { train: '#EB0000', engine: '#FF3333' },
+  Austria:          { train: '#E2002A', engine: '#FF4D60' },
+  Italy:            { train: '#008856', engine: '#33B87A' },
+  Spain:            { train: '#7B2FA0', engine: '#A562CC' },
+  'Czech Republic': { train: '#007CB0', engine: '#33AAD4' },
+  Poland:           { train: '#E06000', engine: '#FF8833' },
+  Hungary:          { train: '#7CB342', engine: '#A5D46A' },
+  Denmark:          { train: '#8B1A30', engine: '#B83D55' },
 };
 
 /** Mapbox data-driven expression: station dot color by country property */
