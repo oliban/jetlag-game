@@ -44,8 +44,8 @@ export function tickClock(clock: GameClock, nowMs: number): GameClock {
 }
 
 export function setClockSpeed(clock: GameClock, speed: number): GameClock {
-  if (![1, 2, 5, 10].includes(speed)) {
-    throw new Error(`Invalid speed: ${speed}. Must be 1, 2, 5, or 10.`);
+  if (![1, 2, 5, 10, 20].includes(speed)) {
+    throw new Error(`Invalid speed: ${speed}. Must be 1, 2, 5, 10, or 20.`);
   }
   return { ...clock, speed };
 }
