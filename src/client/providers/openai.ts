@@ -1,7 +1,6 @@
 import type { AnthropicToolDefinition, ToolCall } from '../aiClient.ts';
 
 export interface OpenAIProviderOptions {
-  apiKey: string;
   model?: string;
   maxTokens?: number;
 }
@@ -158,7 +157,7 @@ export async function sendOpenAIMessage(
   }>,
   tools: AnthropicToolDefinition[],
 ): Promise<OpenAITurnResult> {
-  const { apiKey, model = 'gpt-4o', maxTokens = 2048 } = options;
+  const { model = 'gpt-4o', maxTokens = 2048 } = options;
 
   const openAIMessages: OpenAIMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -167,10 +166,9 @@ export async function sendOpenAIMessage(
 
   const openAITools = convertToolsToOpenAI(tools);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('/api/openai', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

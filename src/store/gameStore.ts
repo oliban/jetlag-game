@@ -66,14 +66,14 @@ export interface GameStore {
   cooldownTracker: CooldownTracker | null;
   gameResult: 'seeker_wins' | 'hider_wins' | null;
   debugLog: DebugLogEntry[];
-  apiKey: string;
+  hasAnthropicProvider: boolean;
+  hasOpenaiProvider: boolean;
   isAISeeking: boolean;
 
   // Coin system
   coinBudget: CoinBudget | null;
 
   // Dual seeker / consensus
-  openaiApiKey: string;
   seekerMode: SeekerMode;
   seekerTurnNumber: number;
   consensusLog: ConsensusLogEntry[];
@@ -94,8 +94,7 @@ export interface GameStore {
   togglePause: () => void;
   tick: (nowMs: number) => void;
   transitionPhase: (to: GamePhase) => void;
-  setApiKey: (key: string) => void;
-  setOpenaiApiKey: (key: string) => void;
+  fetchProviderConfig: () => Promise<void>;
   addConstraint: (constraint: Constraint) => void;
   addQuestion: (entry: QuestionEntry) => void;
   addDebugLog: (entry: DebugLogEntry) => void;
@@ -132,14 +131,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   cooldownTracker: null,
   gameResult: null,
   debugLog: [],
-  apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY ?? '',
+  hasAnthropicProvider: false,
+  hasOpenaiProvider: false,
   isAISeeking: false,
 
   // Coins
   coinBudget: null,
 
   // Dual seeker / consensus
-  openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY ?? '',
   seekerMode: 'single',
   seekerTurnNumber: 0,
   consensusLog: [],
@@ -190,7 +189,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
 
       const hiderStation = stations[bestHider];
-      logger.info('gameStore', `Seeker mode started. Player (seeker) at ${playerStation?.name} (${playerStart}), AI hider at ${hiderStation?.name} (${bestHider}), ${Math.round(bestDist)}km apart, seed=${s}`);
+      logger.info('gameStore', `Seeker mode started. Player (seeker) at ${playerStation?.name} (${playerStart}), ${Math.round(bestDist)}km from hider, seed=${s}`);
+      logger.debug('gameStore', `AI hider at ${hiderStation?.name} (${bestHider})`);
 
       set({
         phase: 'seeking',
@@ -225,10 +225,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Hider mode (default): existing behavior
     const state = get();
-    const hasBothKeys = state.apiKey.trim() !== '' && state.openaiApiKey.trim() !== '';
+    const hasBothKeys = state.hasAnthropicProvider && state.hasOpenaiProvider;
 
     const startStation = rng.pick(ids);
-    logger.info('gameStore', `Game started. Hider at ${stations[startStation]?.name} (${startStation}), seed=${s}`);
+    logger.debug('gameStore', `Game started. Hider at ${stations[startStation]?.name} (${startStation}), seed=${s}`);
 
     set({
       phase: 'hiding',
@@ -491,25 +491,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
-  setApiKey: (key: string) => {
-    set({ apiKey: key });
-    // Check if we should switch to consensus mode
-    const state = get();
-    if (key.trim() && state.openaiApiKey.trim()) {
-      set({ seekerMode: 'consensus' });
-    } else {
-      set({ seekerMode: 'single' });
-    }
-  },
-
-  setOpenaiApiKey: (key: string) => {
-    set({ openaiApiKey: key });
-    // Check if we should switch to consensus mode
-    const state = get();
-    if (key.trim() && state.apiKey.trim()) {
-      set({ seekerMode: 'consensus' });
-    } else {
-      set({ seekerMode: 'single' });
+  fetchProviderConfig: async () => {
+    try {
+      const response = await fetch('/api/config');
+      if (!response.ok) throw new Error(`Config fetch failed: ${response.status}`);
+      const data = await response.json();
+      set({
+        hasAnthropicProvider: !!data.hasAnthropic,
+        hasOpenaiProvider: !!data.hasOpenai,
+      });
+    } catch (error) {
+      logger.error('gameStore', 'Failed to fetch provider config', error);
     }
   },
 
@@ -584,7 +576,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = get();
     if (state.phase !== 'seeking') return;
     if (!state.seekerStationId || !state.playerStationId) return;
-    if (!state.apiKey) return;
+    if (!state.hasAnthropicProvider) return;
     if (state.isAISeeking) return; // Already running
     if (!state.cooldownTracker) return;
 
@@ -592,10 +584,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     logger.info('gameStore', `executeSeekerTurn: starting. Seeker at ${state.seekerStationId}, game time ${Math.floor(state.clock.gameMinutes)}min, mode=${state.seekerMode}`);
 
     try {
-      if (state.seekerMode === 'consensus' && state.openaiApiKey) {
+      if (state.seekerMode === 'consensus' && state.hasOpenaiProvider) {
         // Consensus mode: dual seekers
-        const configA: ProviderConfig = { type: 'claude', apiKey: state.apiKey };
-        const configB: ProviderConfig = { type: 'openai', apiKey: state.openaiApiKey };
+        const configA: ProviderConfig = { type: 'claude' };
+        const configB: ProviderConfig = { type: 'openai' };
 
         const result = await runConsensusTurn(
           configA,
@@ -693,7 +685,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       } else {
         // Single seeker mode
         const result = await runSeekerTurn(
-          state.apiKey,
+          { type: 'claude' },
           state.seekerStationId,
           state.playerStationId,
           state.clock.gameMinutes,

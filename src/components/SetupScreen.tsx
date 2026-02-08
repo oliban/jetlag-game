@@ -1,45 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 
 export default function SetupScreen() {
   const phase = useGameStore((s) => s.phase);
   const startGame = useGameStore((s) => s.startGame);
-  const storedApiKey = useGameStore((s) => s.apiKey);
-  const setApiKey = useGameStore((s) => s.setApiKey);
-  const storedOpenaiKey = useGameStore((s) => s.openaiApiKey);
-  const setOpenaiApiKey = useGameStore((s) => s.setOpenaiApiKey);
+  const hasAnthropicProvider = useGameStore((s) => s.hasAnthropicProvider);
+  const hasOpenaiProvider = useGameStore((s) => s.hasOpenaiProvider);
+  const fetchProviderConfig = useGameStore((s) => s.fetchProviderConfig);
 
   const [selectedRole, setSelectedRole] = useState<'hider' | 'seeker' | null>(null);
-  // Never pre-fill API keys in the UI — env keys stay hidden in the store
-  const [localKey, setLocalKey] = useState('');
-  const [localOpenaiKey, setLocalOpenaiKey] = useState('');
-  const [error, setError] = useState('');
   const [hoveredCard, setHoveredCard] = useState<'hider' | 'seeker' | null>(null);
+
+  useEffect(() => {
+    fetchProviderConfig();
+  }, [fetchProviderConfig]);
 
   if (phase !== 'setup') return null;
 
-  const hasAnthropicKey = localKey.trim() !== '' || storedApiKey !== '';
-  const hasOpenaiKey = localOpenaiKey.trim() !== '' || storedOpenaiKey !== '';
-  const hasBothKeys = hasAnthropicKey && hasOpenaiKey;
+  const hasBothKeys = hasAnthropicProvider && hasOpenaiProvider;
 
   const handleStart = () => {
-    // Use typed key, or fall back to env-backed key already in the store
-    const key = localKey.trim() || storedApiKey;
-    if (!key) {
-      setError('Please enter an Anthropic API key to start.');
-      return;
-    }
-    setApiKey(key);
-    const oaiKey = localOpenaiKey.trim() || storedOpenaiKey;
-    if (oaiKey) {
-      setOpenaiApiKey(oaiKey);
-    }
-    setError('');
+    if (!hasAnthropicProvider) return;
     startGame();
   };
 
   const font = "'DM Sans', system-ui, sans-serif";
-  const mono = "'DM Mono', 'DM Sans', monospace";
 
   // Jet Lag brand palette
   const gold = '#ffbf40';
@@ -239,102 +224,77 @@ export default function SetupScreen() {
                   <p>AI seekers will hunt you down within <span className="font-semibold" style={{ color: gold }}>50 game-hours</span>.</p>
                 </div>
 
-                {/* Anthropic key */}
-                <div>
-                  <label htmlFor="api-key" className="block text-[13px] font-medium mb-2" style={{ fontFamily: font, color: `${gold}90` }}>
-                    Anthropic API Key
-                  </label>
-                  <input
-                    id="api-key"
-                    type="password"
-                    value={localKey}
-                    onChange={(e) => {
-                      setLocalKey(e.target.value);
-                      if (error) setError('');
-                    }}
-                    placeholder={storedApiKey ? 'Using key from .env' : 'sk-ant-...'}
-                    className="w-full px-4 py-3 rounded-xl text-[14px] focus:outline-none transition-all duration-200"
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      color: '#fff',
-                      border: `1px solid ${gold}18`,
-                      fontFamily: mono,
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.border = `1px solid ${gold}`;
-                      e.currentTarget.style.boxShadow = `0 0 0 3px ${gold}20`;
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.border = `1px solid ${gold}18`;
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  />
-                </div>
-
-                {/* OpenAI key */}
-                <div>
-                  <label htmlFor="openai-key" className="block text-[13px] font-medium mb-2" style={{ fontFamily: font, color: `${gold}90` }}>
-                    OpenAI API Key
-                    <span className="ml-1.5" style={{ color: 'rgba(255,255,255,0.25)' }}>(optional — enables dual seekers)</span>
-                  </label>
-                  <input
-                    id="openai-key"
-                    type="password"
-                    value={localOpenaiKey}
-                    onChange={(e) => setLocalOpenaiKey(e.target.value)}
-                    placeholder={storedOpenaiKey ? 'Using key from .env' : 'sk-...'}
-                    className="w-full px-4 py-3 rounded-xl text-[14px] focus:outline-none transition-all duration-200"
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      color: '#fff',
-                      border: `1px solid ${gold}18`,
-                      fontFamily: mono,
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.border = '1px solid #8b5cf6';
-                      e.currentTarget.style.boxShadow = '0 0 0 3px rgba(139,92,246,0.15)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.border = `1px solid ${gold}18`;
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  />
+                {/* Provider status indicators */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2.5 text-[13px]" style={{ fontFamily: font }}>
+                    <span className="w-2 h-2 rounded-full inline-block" style={{
+                      background: hasAnthropicProvider ? '#22c55e' : '#ef4444',
+                    }} />
+                    <span style={{ color: hasAnthropicProvider ? 'rgba(255,255,255,0.7)' : '#ef4444' }}>
+                      {hasAnthropicProvider ? 'Claude API connected' : 'Claude API not configured'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-[13px]" style={{ fontFamily: font }}>
+                    {hasOpenaiProvider ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ background: '#22c55e' }} />
+                        <span style={{ color: 'rgba(255,255,255,0.7)' }}>OpenAI API connected</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'rgba(255,255,255,0.2)' }} />
+                        <span style={{ color: 'rgba(255,255,255,0.35)' }}>OpenAI not configured (single seeker mode)</span>
+                      </>
+                    )}
+                  </div>
                   {hasBothKeys && (
-                    <p className="text-[12px] mt-2.5 flex items-center gap-2" style={{ fontFamily: font, color: '#a78bfa' }}>
+                    <p className="text-[12px] mt-1 flex items-center gap-2" style={{ fontFamily: font, color: '#a78bfa' }}>
                       <span className="w-1.5 h-1.5 rounded-full inline-block animate-pulse" style={{ background: '#a78bfa' }} />
                       Consensus mode: Claude + GPT-4o will seek together
                     </p>
                   )}
                 </div>
 
-                {error && (
-                  <p className="text-[13px]" style={{ fontFamily: font, color: red }}>{error}</p>
+                {!hasAnthropicProvider && (
+                  <p className="text-[13px]" style={{ fontFamily: font, color: red }}>
+                    Claude API key must be configured on the server to play.
+                  </p>
                 )}
 
                 {/* Start button */}
                 <button
                   onClick={handleStart}
+                  disabled={!hasAnthropicProvider}
                   className="w-full py-3.5 rounded-xl font-bold text-[15px] transition-all duration-200"
                   style={{
-                    background: `linear-gradient(135deg, ${gold} 0%, ${goldDark} 100%)`,
-                    color: navyDeep,
+                    background: hasAnthropicProvider
+                      ? `linear-gradient(135deg, ${gold} 0%, ${goldDark} 100%)`
+                      : 'rgba(255,255,255,0.1)',
+                    color: hasAnthropicProvider ? navyDeep : 'rgba(255,255,255,0.3)',
                     fontFamily: font,
-                    boxShadow: `0 4px 24px -4px ${gold}60, inset 0 1px 0 rgba(255,255,255,0.25)`,
+                    boxShadow: hasAnthropicProvider
+                      ? `0 4px 24px -4px ${gold}60, inset 0 1px 0 rgba(255,255,255,0.25)`
+                      : 'none',
+                    cursor: hasAnthropicProvider ? 'pointer' : 'not-allowed',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = `0 8px 32px -4px ${gold}70, inset 0 1px 0 rgba(255,255,255,0.3)`;
-                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    if (hasAnthropicProvider) {
+                      e.currentTarget.style.boxShadow = `0 8px 32px -4px ${gold}70, inset 0 1px 0 rgba(255,255,255,0.3)`;
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = `0 4px 24px -4px ${gold}60, inset 0 1px 0 rgba(255,255,255,0.25)`;
-                    e.currentTarget.style.transform = 'translateY(0)';
+                    if (hasAnthropicProvider) {
+                      e.currentTarget.style.boxShadow = `0 4px 24px -4px ${gold}60, inset 0 1px 0 rgba(255,255,255,0.25)`;
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }
                   }}
                 >
                   Start Game
                 </button>
 
                 <p className="text-[11px] text-center pt-1" style={{ fontFamily: font, color: 'rgba(255,255,255,0.2)' }}>
-                  Keys stay local — sent only to their respective providers.
+                  API keys are configured server-side and never exposed to the browser.
                 </p>
               </div>
             )}
@@ -356,7 +316,6 @@ export default function SetupScreen() {
         }
         .setup-card-enter { animation: setup-card-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .setup-form-enter { animation: setup-form-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-        .setup-screen input::placeholder { color: rgba(255,191,64,0.25); }
         .setup-screen ::-webkit-scrollbar { width: 6px; }
         .setup-screen ::-webkit-scrollbar-track { background: transparent; }
         .setup-screen ::-webkit-scrollbar-thumb { background: rgba(255,191,64,0.15); border-radius: 3px; }

@@ -59,7 +59,7 @@ export default function DebugPanel() {
     }
   }, [debugLog, consensusLog]);
 
-  if (!visible) return null;
+  if (!import.meta.env.DEV || !visible) return null;
 
   const toolNames = [...new Set(debugLog.map((e) => e.tool))];
   const filtered =

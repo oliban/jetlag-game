@@ -14,7 +14,6 @@ export type ProviderType = 'claude' | 'openai';
 
 export interface ProviderConfig {
   type: ProviderType;
-  apiKey: string;
   model?: string;
 }
 
@@ -43,14 +42,14 @@ export async function sendProviderMessage(
   switch (config.type) {
     case 'claude':
       return sendClaudeMessage(
-        { apiKey: config.apiKey, model: config.model },
+        { model: config.model },
         systemPrompt,
         conversationHistory,
         tools,
       );
     case 'openai':
       return sendOpenAIMessage(
-        { apiKey: config.apiKey, model: config.model },
+        { model: config.model },
         systemPrompt,
         conversationHistory,
         tools,

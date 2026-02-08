@@ -266,45 +266,72 @@ export function initTrainHover(
     const dwellingStationId = props.dwellingStationId as string | null;
     const nextStationId = props.nextStationId as string;
 
-    // Parse route stations and build colored display names
+    // Build popup DOM safely (no innerHTML/setHTML)
     const playerStId = getPlayerStationId();
-    let stationSpans: string[] = [];
-    try {
-      const stationIds: string[] = JSON.parse(props.stations as string);
-      stationSpans = stationIds.map((id) => {
-        const name = stationMap[id]?.name ?? id;
-        if (id === playerStId) return `<span style="color:#f59e0b;font-weight:700;">${name}</span>`;
-        if (id === nextStationId) return `<span style="color:#3b82f6;font-weight:700;">${name}</span>`;
-        return name;
-      });
-    } catch {
-      stationSpans = ['Unknown'];
-    }
-
-    const routeLine = stationSpans.join(' <span style="color:#64748b;">\u2192</span> ');
     const nextName = stationMap[nextStationId]?.name ?? nextStationId;
 
-    let statusLine: string;
-    if (dwelling && dwellingStationId && dwellingStationId !== 'null') {
-      const dwellingName = stationMap[dwellingStationId]?.name ?? dwellingStationId;
-      statusLine = `Stopped at: <span style="color:#f59e0b;">${dwellingName}</span>`;
-    } else {
-      statusLine = `Next: <span style="color:#3b82f6;">${nextName}</span>`;
+    const container = document.createElement('div');
+    container.style.cssText = 'font-size:13px;line-height:1.4;color:#e2e8f0;';
+
+    // Route line
+    const routeDiv = document.createElement('div');
+    routeDiv.style.fontWeight = '600';
+
+    // Build route with styled station names
+    let stationIds: string[] = [];
+    try {
+      stationIds = JSON.parse(props.stations as string);
+    } catch {
+      stationIds = [];
     }
 
-    const routeId = props.routeId as string;
+    stationIds.forEach((id, idx) => {
+      if (idx > 0) {
+        const arrow = document.createElement('span');
+        arrow.style.color = '#64748b';
+        arrow.textContent = ' \u2192 ';
+        routeDiv.appendChild(arrow);
+      }
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = stationMap[id]?.name ?? id;
+      if (id === playerStId) {
+        nameSpan.style.cssText = 'color:#f59e0b;font-weight:700;';
+      } else if (id === nextStationId) {
+        nameSpan.style.cssText = 'color:#3b82f6;font-weight:700;';
+      }
+      routeDiv.appendChild(nameSpan);
+    });
+    container.appendChild(routeDiv);
 
-    const html = `
-      <div style="font-size:13px;line-height:1.4;color:#e2e8f0;">
-        <div style="font-weight:600;">${routeLine}</div>
-        <div style="color:${color};font-size:11px;margin-top:2px;">${railwayName} \u00b7 ${label} \u00b7 ${speed} km/h</div>
-        <div style="font-size:11px;margin-top:2px;color:#94a3b8;">${statusLine}</div>
-      </div>
-    `;
+    // Info line
+    const infoDiv = document.createElement('div');
+    infoDiv.style.cssText = `color:${color};font-size:11px;margin-top:2px;`;
+    infoDiv.textContent = `${railwayName} \u00b7 ${label} \u00b7 ${speed} km/h`;
+    container.appendChild(infoDiv);
+
+    // Status line
+    const statusDiv = document.createElement('div');
+    statusDiv.style.cssText = 'font-size:11px;margin-top:2px;color:#94a3b8;';
+
+    if (dwelling && dwellingStationId && dwellingStationId !== 'null') {
+      const dwellingName = stationMap[dwellingStationId]?.name ?? dwellingStationId;
+      statusDiv.textContent = 'Stopped at: ';
+      const dwellSpan = document.createElement('span');
+      dwellSpan.style.color = '#f59e0b';
+      dwellSpan.textContent = dwellingName;
+      statusDiv.appendChild(dwellSpan);
+    } else {
+      statusDiv.textContent = 'Next: ';
+      const nextSpan = document.createElement('span');
+      nextSpan.style.color = '#3b82f6';
+      nextSpan.textContent = nextName;
+      statusDiv.appendChild(nextSpan);
+    }
+    container.appendChild(statusDiv);
 
     popup
       .setLngLat(e.lngLat)
-      .setHTML(html)
+      .setDOMContent(container)
       .addTo(map);
 
     // Highlight next station (blue)

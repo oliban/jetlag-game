@@ -18,7 +18,6 @@ interface AnthropicResponse {
 }
 
 export interface ClaudeProviderOptions {
-  apiKey: string;
   model?: string;
   maxTokens?: number;
 }
@@ -39,15 +38,12 @@ export async function sendClaudeMessage(
   conversationHistory: AnthropicMessage[],
   tools: AnthropicToolDefinition[],
 ): Promise<ClaudeTurnResult> {
-  const { apiKey, model = 'claude-sonnet-4-5-20250929', maxTokens = 2048 } = options;
+  const { model = 'claude-sonnet-4-5-20250929', maxTokens = 2048 } = options;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('/api/anthropic', {
     method: 'POST',
     headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
       model,

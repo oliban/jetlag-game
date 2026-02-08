@@ -75,7 +75,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function runSeekerTurn(
-  apiKeyOrConfig: string | ProviderConfig,
+  providerConfig: ProviderConfig,
   seekerStationId: string,
   hiderStationId: string,
   gameMinutes: number,
@@ -86,10 +86,6 @@ export async function runSeekerTurn(
   coinBudget?: CoinBudget | null,
   visitedStations?: Set<string>,
 ): Promise<SeekerTurnResult & { coinBudget?: CoinBudget | null; cooldownTracker?: CooldownTracker }> {
-  // Support both raw API key (backward compat) and ProviderConfig
-  const providerConfig: ProviderConfig = typeof apiKeyOrConfig === 'string'
-    ? { type: 'claude', apiKey: apiKeyOrConfig }
-    : apiKeyOrConfig;
 
   const stations = getStations();
   const tools = getToolDefinitions();

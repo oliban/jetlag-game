@@ -24,7 +24,7 @@ const LEVEL_STYLES: Record<LogLevel, string> = {
 
 class GameLogger {
   private entries: LogEntry[] = [];
-  private minLevel: LogLevel = 'debug';
+  private minLevel: LogLevel = import.meta.env.DEV ? 'debug' : 'warn';
 
   setLevel(level: LogLevel) {
     this.minLevel = level;
