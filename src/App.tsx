@@ -40,6 +40,7 @@ function App() {
         case '2': setSpeed(2); break;
         case '3': setSpeed(5); break;
         case '4': setSpeed(10); break;
+        case '5': setSpeed(20); break;
         case ' ': e.preventDefault(); togglePause(); break;
       }
     };

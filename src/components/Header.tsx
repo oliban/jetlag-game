@@ -46,7 +46,7 @@ export default function Header() {
         </span>
 
         <div className="flex items-center gap-1">
-          {[1, 2, 5, 10].map((speed) => (
+          {[1, 2, 5, 10, 20].map((speed) => (
             <button
               key={speed}
               onClick={() => setSpeed(speed)}
