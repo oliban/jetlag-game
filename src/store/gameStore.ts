@@ -80,6 +80,9 @@ export interface GameStore {
   seekerNextActionTime: number;
   seekerTravelQueue: TravelRouteEntry[];
 
+  // Queued connection (player clicked a departure while in transit)
+  queuedRoute: { routeId: string; destinationStationId: string; departureTime: number } | null;
+
   // UI state
   hoveredRadarRadius: number | null;
 
@@ -175,6 +178,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // AI seeker scheduling
   seekerNextActionTime: 0,
   seekerTravelQueue: [],
+
+  // Queued connection
+  queuedRoute: null,
 
   // UI state
   hoveredRadarRadius: null,
@@ -438,6 +444,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
+    // Process queued route when player transit completes
+    let queuedRoute = state.queuedRoute;
+    if (!playerTransit && queuedRoute && playerStationId) {
+      // Transit just completed — try to board queued connection
+      // Only if the departure hasn't already left
+      if (queuedRoute.departureTime >= newClock.gameMinutes) {
+        // Defer to travelViaRoute after state update (will be called below)
+      } else {
+        // Missed the connection — discard
+        logger.info('gameStore', `Queued route ${queuedRoute.routeId} missed (departed ${queuedRoute.departureTime}, now ${Math.floor(newClock.gameMinutes)})`);
+        queuedRoute = null;
+      }
+    }
+
     // Check seeker transit completion
     let seekerTransit = state.seekerTransit;
     let seekerStationId = state.seekerStationId;
@@ -474,7 +494,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       seekerTransit,
       seekerStationId,
       seekerTravelQueue,
+      queuedRoute,
     });
+
+    // Process queued route now that state is updated
+    if (!playerTransit && queuedRoute && queuedRoute.departureTime >= newClock.gameMinutes) {
+      get().travelViaRoute(queuedRoute.routeId, queuedRoute.destinationStationId, queuedRoute.departureTime);
+      set({ queuedRoute: null });
+    }
 
     // Check win condition after player seeker arrives at a station
     if (state.playerRole === 'seeker' && playerStationId !== state.playerStationId) {
@@ -957,8 +984,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!hiderCanTravel && !seekerCanTravel) return;
     if (!playerStationId) return;
 
-    // Block if already on the train (past departure)
-    if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) return;
+    // If already on the train, queue this route for when we arrive
+    if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) {
+      set({ queuedRoute: { routeId, destinationStationId, departureTime } });
+      logger.info('gameStore', `Queued route ${routeId} toward ${destinationStationId} (departs ${departureTime})`);
+      return;
+    }
 
     // Find the route
     const routes = getRoutes();
@@ -1019,6 +1050,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         destinationStationId,
         nextArrivalTime: nextArrival,
       },
+      queuedRoute: null,
     });
 
     logger.info('gameStore', `Boarded route ${routeId} toward ${destinationStationId}, departing ${departureTime}, arriving ${finalArrival}`);

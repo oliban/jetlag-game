@@ -116,7 +116,9 @@ export default function DepartureBoardModal() {
     // For multi-stop routes, show next intermediate station's board
     boardStationId = activeTransit.toStationId;
     boardTime = activeTransit.nextArrivalTime ?? activeTransit.arrivalTime;
-    canTravel = false;
+    const hiderCanTravel = playerRole === 'hider' && phase === 'hiding' && !hidingZone;
+    const seekerCanTravel = playerRole === 'seeker' && phase === 'seeking';
+    canTravel = showingSeekerBoard ? false : (hiderCanTravel || seekerCanTravel);
   } else {
     // At station (or waiting for departure — still at station, can change mind)
     boardStationId = activeStationId;
