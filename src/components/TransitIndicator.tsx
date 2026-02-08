@@ -1,8 +1,10 @@
+import { useState, useEffect, useRef } from 'react';
 import type { TransitState, Station } from '../types/game';
 import { findTransitTrainDwelling } from '../engine/transitPosition';
 import { getRoutes } from '../engine/trainRoutes';
 import { formatDuration, formatGameTime } from '../engine/gameLoop';
 import { getStations } from '../data/graph';
+import { useGameStore } from '../store/gameStore';
 
 const TRAIN_TYPE_COLORS: Record<string, string> = {
   express: 'text-yellow-400',
@@ -27,6 +29,23 @@ export default function TransitIndicator({
   stayOnTrain,
   queuedRoute,
 }: TransitIndicatorProps) {
+  // "Missed!" animation state
+  const [missedRoute, setMissedRoute] = useState<{ routeId: string; destinationStationId: string } | null>(null);
+  const missedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (queuedRoute && clock.gameMinutes > queuedRoute.departureTime && !missedRoute) {
+      // Departure passed — trigger missed animation
+      setMissedRoute({ routeId: queuedRoute.routeId, destinationStationId: queuedRoute.destinationStationId });
+      useGameStore.setState({ queuedRoute: null });
+      missedTimerRef.current = setTimeout(() => {
+        setMissedRoute(null);
+      }, 3000);
+    }
+    return () => {
+      if (missedTimerRef.current) clearTimeout(missedTimerRef.current);
+    };
+  }, [queuedRoute, clock.gameMinutes, missedRoute]);
   const waiting = clock.gameMinutes < playerTransit.departureTime;
   const onTrain = !waiting;
   const waitLeft = Math.ceil(playerTransit.departureTime - clock.gameMinutes);
@@ -108,6 +127,7 @@ export default function TransitIndicator({
           Stay on train
         </button>
       )}
+      {/* Queued connection */}
       {queuedRoute && (() => {
         const qRoute = getRoutes().find(r => r.id === queuedRoute.routeId);
         const stationMap = getStations();
@@ -124,6 +144,21 @@ export default function TransitIndicator({
             )}
             <p className="text-xs text-gray-300">
               To {destName} · departs {formatGameTime(queuedRoute.departureTime)}
+            </p>
+          </div>
+        );
+      })()}
+      {/* Missed connection animation */}
+      {missedRoute && (() => {
+        const stationMap = getStations();
+        const destName = stationMap[missedRoute.destinationStationId]?.name ?? missedRoute.destinationStationId;
+        return (
+          <div className="mt-2 pt-2 border-t border-gray-700/50 animate-pulse">
+            <p className="text-[10px] text-red-400 uppercase tracking-wide font-bold">
+              Missed!
+            </p>
+            <p className="text-xs text-red-400/70 line-through">
+              Connection to {destName}
             </p>
           </div>
         );

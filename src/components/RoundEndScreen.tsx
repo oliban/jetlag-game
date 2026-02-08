@@ -1,5 +1,6 @@
 import { useGameStore } from '../store/gameStore';
 import { formatGameTime } from '../engine/gameLoop';
+import { getStations } from '../data/graph';
 
 export default function RoundEndScreen() {
   const phase = useGameStore((s) => s.phase);
@@ -8,6 +9,7 @@ export default function RoundEndScreen() {
   const questionsAsked = useGameStore((s) => s.questionsAsked);
   const transitionPhase = useGameStore((s) => s.transitionPhase);
   const playerRole = useGameStore((s) => s.playerRole);
+  const hidingZone = useGameStore((s) => s.hidingZone);
 
   if (phase !== 'round_end' || !gameResult) return null;
 
@@ -37,7 +39,15 @@ export default function RoundEndScreen() {
             : (playerRole === 'hider' ? 'You stayed hidden!' : 'The hider escaped!')}
         </h2>
 
-        {/* Subtitle */}
+        {/* Station */}
+        {seekerWon && hidingZone && (
+          <p className="text-lg mb-1">
+            <span className="text-gray-400">at </span>
+            <span className="text-white font-medium">{getStations()[hidingZone.stationId]?.name ?? hidingZone.stationId}</span>
+          </p>
+        )}
+
+        {/* Time */}
         <p className="text-gray-400 mb-6">
           {seekerWon
             ? `Found in ${formatGameTime(gameMinutes)}`
