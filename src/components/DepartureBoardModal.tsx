@@ -201,16 +201,17 @@ export default function DepartureBoardModal() {
             && activeTransit?.departureTime === dep.departureTime;
 
           const rowClickable = handleBoard && !blocked && dep.remainingStops.length > 0;
+          const canExpand = !blocked && dep.remainingStops.length > 0;
           const rowKey = `${dep.route.id}-${dep.direction}-${dep.departureTime}`;
           const isExpanded = expandedKey === rowKey;
 
           return (
             <div key={rowKey}>
               <div
-                onClick={rowClickable ? () => {
+                onClick={canExpand ? () => {
                   setExpandedKey(isExpanded ? null : rowKey);
                 } : undefined}
-                className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.8rem_2.4rem] px-3 py-1 border-b border-[#0a1a3a] items-center ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${rowClickable ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
+                className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.8rem_2.4rem] px-3 py-1 border-b border-[#0a1a3a] items-center ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${canExpand ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
               >
                 <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : 'text-white'}`}>
                   {formatGameTime(dep.departureTime)}
@@ -233,7 +234,7 @@ export default function DepartureBoardModal() {
               </div>
 
               {/* Expanded stop list — L-shape route line */}
-              {isExpanded && handleBoard && (
+              {isExpanded && (
                 <div className="bg-[#081c3e] ml-5">
                   {dep.remainingStops.map((stop, i) => {
                     const stopStation = stations[stop.stationId];
@@ -241,16 +242,17 @@ export default function DepartureBoardModal() {
                     const durFromDep = Math.round(stop.arrivalMin - dep.departureTime);
                     const isLast = i === dep.remainingStops.length - 1;
                     const stopBlocked = playerRole === 'hider' && phase === 'hiding' && stop.arrivalMin > HIDING_TIME_LIMIT;
+                    const stopClickable = handleBoard && !stopBlocked;
 
                     return (
                       <div
                         key={stop.stationId}
-                        onClick={stopBlocked ? undefined : (e) => {
+                        onClick={stopClickable ? (e) => {
                           e.stopPropagation();
                           handleBoard!(dep, stop.stationId);
                           setExpandedKey(null);
-                        }}
-                        className={`flex items-center text-xs ${stopBlocked ? 'opacity-40' : 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors'}`}
+                        } : undefined}
+                        className={`flex items-center text-xs ${stopBlocked ? 'opacity-40' : stopClickable ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
                       >
                         <span className="w-4 flex-shrink-0 text-gray-600 text-center font-mono leading-none">
                           {isLast ? '└' : '├'}
