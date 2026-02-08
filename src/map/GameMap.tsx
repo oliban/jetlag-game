@@ -5,9 +5,10 @@ import { getStationList, getConnections, getNeighbors, getStations } from '../da
 import { useGameStore } from '../store/gameStore';
 import type { Station } from '../types/game';
 import { renderConstraints } from './constraintRenderer';
-import { initTrainLayer, updateTrainPositions, initTrainHover } from './trainRenderer';
+import { initTrainLayer, updateTrainPositions, initTrainHover, initTrainClick } from './trainRenderer';
 import { logger } from '../engine/logger';
 import { classifyConnection } from '../engine/trainSchedule';
+import { findTransitTrainPosition } from '../engine/transitPosition';
 import { ALL_GAME_ISOS, stationColorMatchExpression, countryFillMatchExpression, countryBorderMatchExpression } from '../theme/colors';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -37,6 +38,7 @@ export default function GameMap() {
   const seekerTransit = useGameStore((s) => s.seekerTransit);
   const clock = useGameStore((s) => s.clock);
   const hoveredRadarRadius = useGameStore((s) => s.hoveredRadarRadius);
+  const visitedStations = useGameStore((s) => s.visitedStations);
 
   const stations = useMemo(() => getStationList(), []);
   const connections = useMemo(() => getConnections(), []);
@@ -278,7 +280,12 @@ export default function GameMap() {
 
       // Train visualization layer (above connection-lines, below station-dots)
       initTrainLayer(map);
-      initTrainHover(map, getStations());
+      initTrainHover(map, getStations(), () => useGameStore.getState().playerStationId);
+      initTrainClick(
+        map,
+        () => useGameStore.getState().playerStationId,
+        (routeId, dest, depTime) => useGameStore.getState().travelViaRoute(routeId, dest, depTime),
+      );
 
       setMapLoaded(true);
     });
@@ -396,22 +403,15 @@ export default function GameMap() {
     });
   }, [playerStationId, playerRole, mapLoaded]);
 
-  // Interpolate player marker position during transit (runs on clock tick only when in transit)
+  // Attach player marker to active train during transit
   useEffect(() => {
     if (!playerTransit || !playerMarkerRef.current) return;
+    if (clock.gameMinutes < playerTransit.departureTime) return; // not departed yet
 
-    const stationMap = getStations();
-    const fromStation = stationMap[playerTransit.fromStationId];
-    const toStation = stationMap[playerTransit.toStationId];
-    if (!fromStation || !toStation) return;
-
-    const totalDuration = playerTransit.arrivalTime - playerTransit.departureTime;
-    const elapsed = clock.gameMinutes - playerTransit.departureTime;
-    const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
-    const lat = fromStation.lat + (toStation.lat - fromStation.lat) * t;
-    const lng = fromStation.lng + (toStation.lng - fromStation.lng) * t;
-
-    playerMarkerRef.current.setLngLat([lng, lat]);
+    const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
+    if (pos) {
+      playerMarkerRef.current.setLngLat(pos);
+    }
   }, [playerTransit, clock.gameMinutes]);
 
   // Highlight adjacent connections (hiding phase + seeker seeking phase when not in transit)
@@ -505,22 +505,15 @@ export default function GameMap() {
     }
   }, [seekerStationId, seekerTransit, phase, playerRole, mapLoaded]);
 
-  // Interpolate seeker marker position during transit
+  // Attach seeker marker to active train during transit
   useEffect(() => {
     if (!seekerTransit || !seekerMarkerRef.current) return;
+    if (clock.gameMinutes < seekerTransit.departureTime) return;
 
-    const stationMap = getStations();
-    const fromStation = stationMap[seekerTransit.fromStationId];
-    const toStation = stationMap[seekerTransit.toStationId];
-    if (!fromStation || !toStation) return;
-
-    const totalDuration = seekerTransit.arrivalTime - seekerTransit.departureTime;
-    const elapsed = clock.gameMinutes - seekerTransit.departureTime;
-    const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
-    const lat = fromStation.lat + (toStation.lat - fromStation.lat) * t;
-    const lng = fromStation.lng + (toStation.lng - fromStation.lng) * t;
-
-    seekerMarkerRef.current.setLngLat([lng, lat]);
+    const pos = findTransitTrainPosition(seekerTransit, clock.gameMinutes);
+    if (pos) {
+      seekerMarkerRef.current.setLngLat(pos);
+    }
   }, [seekerTransit, clock.gameMinutes]);
 
   // Update constraint overlays
@@ -530,6 +523,46 @@ export default function GameMap() {
 
     renderConstraints(map, constraints);
   }, [constraints, mapLoaded]);
+
+  // Update station dots with visited state (red for visited stations)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    const source = map.getSource('stations') as mapboxgl.GeoJSONSource;
+    if (!source) return;
+
+    // Only show visited coloring during seeking phase
+    if (phase !== 'seeking' || visitedStations.size === 0) {
+      map.setPaintProperty('station-dots', 'circle-color', stationColorMatchExpression());
+      return;
+    }
+
+    // Update features with visited property
+    const features = stations.map((s) => ({
+      type: 'Feature' as const,
+      properties: {
+        id: s.id,
+        name: s.name,
+        country: s.country,
+        connections: s.connections,
+        visited: visitedStations.has(s.id) ? 1 : 0,
+      },
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [s.lng, s.lat],
+      },
+    }));
+
+    source.setData({ type: 'FeatureCollection', features });
+
+    // Use case expression: visited stations are red, others keep country color
+    map.setPaintProperty('station-dots', 'circle-color', [
+      'case',
+      ['==', ['get', 'visited'], 1],
+      '#ef4444',
+      stationColorMatchExpression(),
+    ] as mapboxgl.Expression);
+  }, [visitedStations, phase, mapLoaded, stations]);
 
   // Update hiding zone circle
   useEffect(() => {
@@ -592,18 +625,13 @@ export default function GameMap() {
       return;
     }
 
-    // Use interpolated position if in transit
+    // Use train position if in transit
     let centerLng = station.lng;
     let centerLat = station.lat;
-    if (playerTransit) {
-      const fromSt = stationMap[playerTransit.fromStationId];
-      const toSt = stationMap[playerTransit.toStationId];
-      if (fromSt && toSt) {
-        const totalDuration = playerTransit.arrivalTime - playerTransit.departureTime;
-        const elapsed = clock.gameMinutes - playerTransit.departureTime;
-        const t = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
-        centerLat = fromSt.lat + (toSt.lat - fromSt.lat) * t;
-        centerLng = fromSt.lng + (toSt.lng - fromSt.lng) * t;
+    if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) {
+      const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
+      if (pos) {
+        [centerLng, centerLat] = pos;
       }
     }
     const radiusKm = hoveredRadarRadius;

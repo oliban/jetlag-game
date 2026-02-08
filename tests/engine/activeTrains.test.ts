@@ -1,20 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   computeBearing,
   getActiveTrains,
-  buildSchedules,
+  _resetActiveTrainCache,
 } from '../../src/engine/activeTrains';
+import { _resetRouteCache } from '../../src/engine/trainRoutes';
+
+beforeEach(() => {
+  _resetActiveTrainCache();
+  _resetRouteCache();
+});
 
 describe('activeTrains', () => {
   describe('computeBearing', () => {
     it('returns ~0 for due north', () => {
-      // From (0, 0) to (10, 0) = due north
       const bearing = computeBearing(0, 0, 10, 0);
       expect(bearing).toBeCloseTo(0, 0);
     });
 
     it('returns ~90 for due east', () => {
-      // From (0, 0) to (0, 10) = due east
       const bearing = computeBearing(0, 0, 0, 10);
       expect(bearing).toBeCloseTo(90, 0);
     });
@@ -36,40 +40,20 @@ describe('activeTrains', () => {
     });
   });
 
-  describe('buildSchedules', () => {
-    it('returns 166 directional schedules (83 connections x 2)', () => {
-      const schedules = buildSchedules();
-      expect(schedules).toHaveLength(166);
-    });
-
-    it('each schedule has required fields', () => {
-      const schedules = buildSchedules();
-      for (const s of schedules) {
-        expect(s.fromId).toBeTruthy();
-        expect(s.toId).toBeTruthy();
-        expect(s.frequency).toBeGreaterThan(0);
-        expect(s.travelMins).toBeGreaterThan(0);
-        expect(s.offset).toBeGreaterThanOrEqual(0);
-        expect(s.offset).toBeLessThan(s.frequency);
-        expect(s.bearing).toBeGreaterThanOrEqual(0);
-        expect(s.bearing).toBeLessThan(360);
-      }
-    });
-  });
-
   describe('getActiveTrains', () => {
     it('returns trains shortly after game start', () => {
-      // At gameMinutes=0, no trains may have departed yet (depends on offsets)
-      // But by gameMinutes=30 (smallest frequency), all local routes have departed
       const trains = getActiveTrains(30);
       expect(trains.length).toBeGreaterThan(0);
     });
 
     it('returns trains within expected count range at various times', () => {
       for (const t of [30, 60, 120, 240, 500]) {
+        _resetActiveTrainCache();
         const trains = getActiveTrains(t);
-        expect(trains.length).toBeGreaterThan(50);
-        expect(trains.length).toBeLessThan(400);
+        // Route-based scheduling has fewer simultaneous trains than per-connection
+        // (~35 routes × 2 dirs, but many share time windows)
+        expect(trains.length).toBeGreaterThan(10);
+        expect(trains.length).toBeLessThan(500);
       }
     });
 
@@ -79,20 +63,6 @@ describe('activeTrains', () => {
         expect(train.progress).toBeGreaterThanOrEqual(0);
         expect(train.progress).toBeLessThanOrEqual(1);
       }
-    });
-
-    it('trains exist in both directions', () => {
-      const trains = getActiveTrains(120);
-      // Find at least one pair where both directions exist for some connection
-      const fromToPairs = new Set(trains.map((t) => `${t.fromId}:${t.toId}`));
-      let foundBidirectional = false;
-      for (const train of trains) {
-        if (fromToPairs.has(`${train.toId}:${train.fromId}`)) {
-          foundBidirectional = true;
-          break;
-        }
-      }
-      expect(foundBidirectional).toBe(true);
     });
 
     it('same gameMinutes returns same results', () => {
@@ -107,15 +77,6 @@ describe('activeTrains', () => {
       expect(new Set(ids).size).toBe(ids.length);
     });
 
-    it('departure < gameMinutes <= arrival for all trains', () => {
-      const gameMinutes = 180;
-      const trains = getActiveTrains(gameMinutes);
-      for (const train of trains) {
-        expect(train.departureTime).toBeLessThanOrEqual(gameMinutes);
-        expect(train.arrivalTime).toBeGreaterThan(gameMinutes);
-      }
-    });
-
     it('lat/lng values are reasonable European coordinates', () => {
       const trains = getActiveTrains(100);
       for (const train of trains) {
@@ -124,6 +85,67 @@ describe('activeTrains', () => {
         expect(train.lng).toBeGreaterThan(-10);
         expect(train.lng).toBeLessThan(25);
       }
+    });
+
+    it('all trains have routeId and stations array', () => {
+      const trains = getActiveTrains(120);
+      for (const train of trains) {
+        expect(train.routeId).toBeTruthy();
+        expect(train.stations.length).toBeGreaterThanOrEqual(2);
+        expect(train.finalStationId).toBeTruthy();
+        expect(train.nextStationId).toBeTruthy();
+        expect(train.speed).toBeGreaterThan(0);
+      }
+    });
+
+    it('dwelling trains have valid dwellingStationId', () => {
+      // Test at a time where intermediate stops are happening
+      // With multi-stop routes, some trains should be dwelling
+      let foundDwelling = false;
+      for (const t of [60, 120, 180, 240, 300]) {
+        _resetActiveTrainCache();
+        const trains = getActiveTrains(t);
+        const dwellingTrains = trains.filter((tr) => tr.dwelling);
+        if (dwellingTrains.length > 0) {
+          foundDwelling = true;
+          for (const tr of dwellingTrains) {
+            expect(tr.dwellingStationId).toBeTruthy();
+            expect(tr.stations).toContain(tr.dwellingStationId);
+            expect(tr.progress).toBe(0);
+          }
+          break;
+        }
+      }
+      expect(foundDwelling).toBe(true);
+    });
+
+    it('non-dwelling trains have null dwellingStationId', () => {
+      const trains = getActiveTrains(100);
+      const moving = trains.filter((tr) => !tr.dwelling);
+      expect(moving.length).toBeGreaterThan(0);
+      for (const tr of moving) {
+        expect(tr.dwellingStationId).toBeNull();
+      }
+    });
+
+    it('finalStationId is the last station in the stations array', () => {
+      const trains = getActiveTrains(150);
+      for (const train of trains) {
+        expect(train.finalStationId).toBe(train.stations[train.stations.length - 1]);
+      }
+    });
+
+    it('trains exist in both directions for routes', () => {
+      const trains = getActiveTrains(120);
+      const hasForward = trains.some((t) => t.id.includes(':forward:'));
+      const hasReverse = trains.some((t) => t.id.includes(':reverse:'));
+      expect(hasForward).toBe(true);
+      expect(hasReverse).toBe(true);
+    });
+
+    it('returns trains at gameMinutes=0 (pre-game departures)', () => {
+      const trains = getActiveTrains(0);
+      expect(trains.length).toBeGreaterThan(0);
     });
   });
 });

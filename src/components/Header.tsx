@@ -20,13 +20,14 @@ export default function Header() {
   const phaseColor = {
     hiding: 'text-emerald-400',
     seeking: 'text-rose-400',
-    round_end: 'text-amber-400',
+    round_end: 'text-[#ffbf40]',
   }[phase] ?? 'text-white';
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur border-b border-gray-700/60 px-4 py-2 flex items-center justify-between">
+    <div className="absolute top-0 left-0 right-0 z-10 bg-[#0a1a3a]/95 backdrop-blur border-b border-[#1a3a6a]/60 px-4 py-2 flex items-center justify-between">
       <div className="flex items-center gap-4">
-        <span className="font-mono text-sm text-gray-400">JET LAG</span>
+        <span className="font-mono text-sm font-bold text-gray-300">JET LAG</span>
+        <span className="text-[#ffbf40] text-sm">{'\u00B7'}</span>
         <span className={`font-bold text-sm ${phaseColor}`}>{phaseLabel}</span>
         {seekerMode === 'consensus' && phase === 'seeking' && (
           <span className="text-xs text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">DUAL SEEKERS</span>
@@ -35,7 +36,7 @@ export default function Header() {
 
       <div className="flex items-center gap-4">
         {coinBudget && (
-          <span className="font-mono text-sm text-amber-400">
+          <span className="font-mono text-sm text-[#ffbf40]">
             Coins: {coinBudget.remaining}/{coinBudget.total}
           </span>
         )}
@@ -51,8 +52,8 @@ export default function Header() {
               onClick={() => setSpeed(speed)}
               className={`px-2 py-0.5 text-xs rounded font-mono ${
                 clock.speed === speed
-                  ? 'bg-amber-500 text-black'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  ? 'bg-[#ffbf40] text-[#061e45]'
+                  : 'bg-[#0c2a52] text-[#8ba4c4] hover:bg-[#12356a]'
               }`}
             >
               {speed}x
@@ -62,7 +63,7 @@ export default function Header() {
 
         <button
           onClick={togglePause}
-          className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+          className={`px-2 py-0.5 text-xs rounded ${clock.paused ? 'bg-rose-500 text-white' : 'bg-[#0c2a52] text-[#a0b8d4] hover:bg-[#12356a]'}`}
         >
           {clock.paused ? '▶' : '⏸'}
         </button>

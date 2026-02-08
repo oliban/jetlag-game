@@ -25,20 +25,23 @@ export default function QuestionLog() {
       {/* Header */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between bg-gray-900/95 backdrop-blur border border-gray-700/60 rounded-t-lg px-3 py-2"
+        className="w-full flex items-center justify-between bg-[#0a1a3a]/95 backdrop-blur border border-[#1a3a6a]/60 rounded-t-lg px-3 py-2"
       >
-        <span className="text-sm font-semibold text-gray-200">
-          Questions ({questionsAsked.length})
+        <span className="text-sm font-semibold text-gray-200 flex items-center gap-2">
+          Questions
+          <span className="bg-[#ffbf40] text-[#061e45] text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+            {questionsAsked.length}
+          </span>
         </span>
         <span className="text-gray-400 text-xs">
-          {collapsed ? 'expand' : 'collapse'}
+          {collapsed ? '\u25BC' : '\u25B2'}
         </span>
       </button>
 
       {!collapsed && (
-        <div className="bg-gray-900/95 backdrop-blur border border-t-0 border-gray-700/60 rounded-b-lg">
+        <div className="bg-[#0a1a3a]/95 backdrop-blur border border-t-0 border-[#1a3a6a]/60 rounded-b-lg">
           {/* Cooldown timers */}
-          <div className="flex gap-2 px-3 py-2 border-b border-gray-700/50">
+          <div className="flex gap-2 px-3 py-2 border-b border-[#1a3a6a]/50">
             {categories.map((cat) => {
               const remaining = cooldownTracker
                 ? getCooldownRemaining(cooldownTracker, cat, gameMinutes)
@@ -47,10 +50,10 @@ export default function QuestionLog() {
               return (
                 <div
                   key={cat}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${style.bg}`}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${style.bg}`}
                 >
                   <span className={style.text}>{style.label}</span>
-                  <span className="text-gray-400">
+                  <span className={remaining > 0 ? 'text-gray-400' : 'text-emerald-400'}>
                     {remaining > 0 ? `${Math.ceil(remaining)}m` : 'ready'}
                   </span>
                 </div>
@@ -65,7 +68,7 @@ export default function QuestionLog() {
                 No questions asked yet
               </p>
             ) : (
-              <div className="divide-y divide-gray-700/50">
+              <div className="divide-y divide-[#1a3a6a]/50">
                 {[...questionsAsked].reverse().map((q, i) => {
                   const style = q.category ? CATEGORY_STYLES[q.category as QuestionCategory] : null;
                   return (
@@ -80,7 +83,7 @@ export default function QuestionLog() {
                         )}
                         <div className="min-w-0">
                           <p className="text-xs text-gray-300 leading-snug">{q.question}</p>
-                          <p className="text-xs text-amber-400 mt-0.5 font-medium">{q.answer}</p>
+                          <p className="text-xs text-[#ffbf40] mt-0.5 font-medium">{q.answer}</p>
                         </div>
                       </div>
                     </div>

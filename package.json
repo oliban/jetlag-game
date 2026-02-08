@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.1.18",
     "mapbox-gl": "^3.18.1",
     "react": "^19.2.0",

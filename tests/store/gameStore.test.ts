@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGameStore } from '../../src/store/gameStore';
 import { getNeighbors } from '../../src/data/graph';
+import { getRoutes, getRoutesAtStation, _resetRouteCache } from '../../src/engine/trainRoutes';
 
 describe('Game Store', () => {
   beforeEach(() => {
@@ -126,5 +127,183 @@ describe('Game Store', () => {
   it('travelTo does nothing in setup phase', () => {
     useGameStore.getState().travelTo('paris');
     expect(useGameStore.getState().playerStationId).toBeNull();
+  });
+
+  describe('travelViaRoute', () => {
+    // Use seeking phase (no time limit) for route travel tests
+    function startSeekingAt(stationId: string) {
+      useGameStore.setState({
+        phase: 'seeking',
+        playerRole: 'seeker',
+        playerStationId: stationId,
+        hidingZone: { stationId: 'naples', lat: 40.85, lng: 14.27, radius: 0.8 },
+        playerTransit: null,
+        clock: { gameMinutes: 0, speed: 1, paused: false, lastTimestamp: null },
+        visitedStations: new Set([stationId]),
+      });
+    }
+
+    it('sets up multi-stop transit with route info', () => {
+      const routes = getRoutes();
+      const multiStop = routes.find(r => r.stations.length >= 3);
+      if (!multiStop) return;
+
+      const origin = multiStop.stations[0];
+      const destination = multiStop.stations[multiStop.stations.length - 1];
+      startSeekingAt(origin);
+
+      useGameStore.getState().travelViaRoute(multiStop.id, destination, multiStop.offset);
+
+      const state = useGameStore.getState();
+      expect(state.playerTransit).not.toBeNull();
+      expect(state.playerTransit!.routeId).toBe(multiStop.id);
+      expect(state.playerTransit!.destinationStationId).toBe(destination);
+      expect(state.playerTransit!.toStationId).toBe(multiStop.stations[1]);
+      expect(state.playerTransit!.nextArrivalTime).toBeDefined();
+      expect(state.playerTransit!.routeStations).toBeDefined();
+      expect(state.playerTransit!.routeStations!.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('rejects boarding when not at a valid station on the route', () => {
+      const routes = getRoutes();
+      const route = routes[0];
+
+      // Put player at a station NOT on this route
+      const stationNotOnRoute = routes.find(r => r.id !== route.id && !route.stations.includes(r.stations[0]))?.stations[0];
+      if (!stationNotOnRoute) return;
+
+      startSeekingAt(stationNotOnRoute);
+      useGameStore.getState().travelViaRoute(route.id, route.stations[route.stations.length - 1], 0);
+
+      expect(useGameStore.getState().playerTransit).toBeNull();
+    });
+
+    it('blocks travel past hiding time limit in hiding phase', () => {
+      const routes = getRoutes();
+      const longRoute = routes.find(r => r.totalDuration > 240 && r.stations.length >= 3);
+      if (!longRoute) return;
+
+      // Use hiding phase for this specific test
+      useGameStore.setState({
+        phase: 'hiding',
+        playerRole: 'hider',
+        playerStationId: longRoute.stations[0],
+        hidingZone: null,
+        playerTransit: null,
+        clock: { gameMinutes: 0, speed: 1, paused: false, lastTimestamp: null },
+      });
+      useGameStore.getState().travelViaRoute(
+        longRoute.id,
+        longRoute.stations[longRoute.stations.length - 1],
+        longRoute.offset,
+      );
+
+      expect(useGameStore.getState().playerTransit).toBeNull();
+    });
+  });
+
+  describe('multi-stop tick advancement', () => {
+    function startSeekingAt(stationId: string) {
+      useGameStore.setState({
+        phase: 'seeking',
+        playerRole: 'seeker',
+        playerStationId: stationId,
+        hidingZone: { stationId: 'naples', lat: 40.85, lng: 14.27, radius: 0.8 },
+        playerTransit: null,
+        clock: { gameMinutes: 0, speed: 1, paused: false, lastTimestamp: null },
+        visitedStations: new Set([stationId]),
+        gameResult: null,
+      });
+    }
+
+    it('advances through intermediate stations', () => {
+      const routes = getRoutes();
+      const route = routes.find(r => r.stations.length >= 3);
+      if (!route) return;
+
+      const origin = route.stations[0];
+      const midStation = route.stations[1];
+      const destination = route.stations[2];
+
+      startSeekingAt(origin);
+      useGameStore.getState().travelViaRoute(route.id, destination, route.offset);
+      const transit = useGameStore.getState().playerTransit;
+      expect(transit).not.toBeNull();
+      expect(transit!.toStationId).toBe(midStation);
+
+      // Advance clock past the first intermediate arrival
+      const firstArrival = transit!.nextArrivalTime!;
+      useGameStore.setState({
+        clock: { gameMinutes: firstArrival + 0.1, speed: 1, paused: false, lastTimestamp: null },
+      });
+      useGameStore.getState().tick(performance.now());
+
+      const afterFirst = useGameStore.getState();
+      expect(afterFirst.playerStationId).toBe(midStation);
+
+      if (midStation !== destination) {
+        expect(afterFirst.playerTransit).not.toBeNull();
+        expect(afterFirst.playerTransit!.toStationId).toBe(destination);
+        expect(afterFirst.playerTransit!.nextArrivalTime).toBeGreaterThan(firstArrival);
+      }
+    });
+
+    it('clears transit when reaching final destination', () => {
+      const routes = getRoutes();
+      const route = routes.find(r => r.stations.length >= 3);
+      if (!route) return;
+
+      const origin = route.stations[0];
+      const destination = route.stations[route.stations.length - 1];
+
+      startSeekingAt(origin);
+      useGameStore.getState().travelViaRoute(route.id, destination, route.offset);
+      const transit = useGameStore.getState().playerTransit;
+      expect(transit).not.toBeNull();
+
+      // Tick through each intermediate stop
+      const finalArrival = transit!.arrivalTime;
+      for (let i = 0; i < route.stations.length; i++) {
+        const t = useGameStore.getState().playerTransit;
+        if (!t) break;
+        const arrival = t.nextArrivalTime ?? t.arrivalTime;
+        useGameStore.setState({
+          clock: { gameMinutes: arrival + 0.1, speed: 1, paused: false, lastTimestamp: null },
+        });
+        useGameStore.getState().tick(performance.now());
+      }
+
+      const finalState = useGameStore.getState();
+      expect(finalState.playerStationId).toBe(destination);
+      expect(finalState.playerTransit).toBeNull();
+    });
+
+    it('dwell timing is deterministic regardless of clock speed', () => {
+      const routes = getRoutes();
+      const route = routes.find(r => r.stations.length >= 3);
+      if (!route) return;
+
+      const origin = route.stations[0];
+      const destination = route.stations[2];
+
+      startSeekingAt(origin);
+      useGameStore.getState().travelViaRoute(route.id, destination, route.offset);
+      const transit1 = useGameStore.getState().playerTransit!;
+      const firstArrival = transit1.nextArrivalTime!;
+
+      // Simulate high speed: clock jumps well past arrival
+      useGameStore.setState({
+        clock: { gameMinutes: firstArrival + 50, speed: 10, paused: false, lastTimestamp: null },
+      });
+      useGameStore.getState().tick(performance.now());
+
+      const afterJump = useGameStore.getState();
+      if (afterJump.playerTransit?.nextArrivalTime) {
+        // Next arrival should be based on firstArrival (exact arrival time),
+        // not the jumped clock time — ensures deterministic dwell
+        expect(afterJump.playerTransit.nextArrivalTime).toBeLessThan(firstArrival + 100);
+        expect(afterJump.playerTransit.nextArrivalTime).toBeGreaterThan(firstArrival);
+      }
+    });
   });
 });

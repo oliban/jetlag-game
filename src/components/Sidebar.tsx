@@ -4,11 +4,29 @@ import { QUESTION_POOL } from '../questions/questionPool';
 import { canAskCategory, getCooldownRemaining } from '../questions/cooldown';
 import { stationMatchesConstraints } from '../engine/seekerLoop';
 import { canAfford, getCost } from '../engine/coinSystem';
+import { findTransitTrainDwelling } from '../engine/transitPosition';
 
 const TRAIN_TYPE_COLORS: Record<string, string> = {
   express: 'text-yellow-400',
   regional: 'text-blue-400',
   local: 'text-gray-400',
+};
+
+const CATEGORY_STYLE: Record<string, { color: string; dim: string; border: string; bg: string }> = {
+  radar:     { color: 'text-green-400',  dim: 'text-green-400/60',  border: 'border-green-700/50', bg: 'bg-green-900/20' },
+  relative:  { color: 'text-blue-400',   dim: 'text-blue-400/60',   border: 'border-blue-700/50',  bg: 'bg-blue-900/20' },
+  precision: { color: 'text-purple-400', dim: 'text-purple-400/60', border: 'border-purple-700/50', bg: 'bg-purple-900/20' },
+};
+
+const QUESTION_ICONS: Record<string, string> = {
+  'radar-100': '◎',
+  'radar-200': '◉',
+  'radar-500': '⊚',
+  'rel-north': '↕',
+  'rel-east': '↔',
+  'prec-same-country': '⚑',
+  'prec-hub': '⬡',
+  'prec-name-am': 'Aa',
 };
 
 export default function Sidebar() {
@@ -33,6 +51,8 @@ export default function Sidebar() {
   const seekerTransit = useGameStore((s) => s.seekerTransit);
   const seekerNextActionTime = useGameStore((s) => s.seekerNextActionTime);
   const seekerTravelQueue = useGameStore((s) => s.seekerTravelQueue);
+  const getOffAtNextStation = useGameStore((s) => s.getOffAtNextStation);
+  const stayOnTrain = useGameStore((s) => s.stayOnTrain);
 
   if (phase === 'setup' || !playerStationId) return null;
 
@@ -62,25 +82,43 @@ export default function Sidebar() {
     const inTransit = !!playerTransit;
 
     return (
-      <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700/60 min-w-[260px] max-h-[80vh] overflow-y-auto">
+      <div className="absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh] overflow-y-auto">
         {/* Your Station */}
         <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
-        <p className="font-bold text-amber-400">{currentStation?.name ?? playerStationId}</p>
+        <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
         <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
 
         {/* Transit indicator */}
         {inTransit && playerTransit && (() => {
           const waiting = clock.gameMinutes < playerTransit.departureTime;
+          const onTrain = !waiting;
           const waitLeft = Math.ceil(playerTransit.departureTime - clock.gameMinutes);
           const travelLeft = Math.ceil(playerTransit.arrivalTime - Math.max(clock.gameMinutes, playerTransit.departureTime));
+          const canGetOff = onTrain && playerTransit.toStationId !== playerTransit.destinationStationId;
+          const exiting = onTrain && playerTransit.toStationId === playerTransit.destinationStationId;
+          const isDwelling = onTrain && findTransitTrainDwelling(playerTransit, clock.gameMinutes);
+          const bgClass = waiting ? 'bg-yellow-900/50 border-yellow-700' : exiting ? 'bg-red-900/50 border-red-700' : isDwelling ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700';
+          const labelClass = waiting ? 'text-yellow-400' : exiting ? 'text-red-400' : isDwelling ? 'text-green-400' : 'text-blue-400';
+          const label = waiting ? 'Waiting for Departure' : exiting ? 'Exiting at Next Stop' : isDwelling ? 'Stopped at Station' : 'In Transit';
+          const trainFinalStation = playerTransit.routeStations?.[playerTransit.routeStations.length - 1];
           return (
-            <div className={`${waiting ? 'bg-yellow-900/50 border-yellow-700' : 'bg-blue-900/50 border-blue-700'} border rounded p-2 mb-3`}>
-              <p className={`text-xs font-medium ${waiting ? 'text-yellow-400' : 'text-blue-400'}`}>
-                {waiting ? 'Waiting for Departure' : 'In Transit'}
+            <div className={`${bgClass} border rounded p-2 mb-3`}>
+              <p className={`text-xs font-medium ${labelClass}`}>
+                {label}
               </p>
               <p className="text-xs text-gray-300">
-                To: {stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
+                {exiting ? 'Getting off at: ' : 'Next: '}{stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
               </p>
+              {!exiting && playerTransit.destinationStationId && playerTransit.destinationStationId !== playerTransit.toStationId && (
+                <p className="text-xs text-gray-500">
+                  Destination: {stations[playerTransit.destinationStationId]?.name ?? playerTransit.destinationStationId}
+                </p>
+              )}
+              {trainFinalStation && trainFinalStation !== playerTransit.destinationStationId && (
+                <p className="text-xs text-gray-500">
+                  Train terminates: {stations[trainFinalStation]?.name ?? trainFinalStation}
+                </p>
+              )}
               <p className="text-xs text-gray-400">
                 <span className={TRAIN_TYPE_COLORS[playerTransit.trainType]}>{playerTransit.trainType}</span>
                 {waiting
@@ -88,13 +126,29 @@ export default function Sidebar() {
                   : <>{' '}— Arriving in {Math.ceil(playerTransit.arrivalTime - clock.gameMinutes)}min</>
                 }
               </p>
+              {canGetOff && (
+                <button
+                  onClick={getOffAtNextStation}
+                  className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-red-400 bg-red-900/30 hover:bg-red-900/50 border border-red-700/50 rounded transition-colors"
+                >
+                  {isDwelling ? 'Get off now!' : `Get off at ${stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}`}
+                </button>
+              )}
+              {exiting && (
+                <button
+                  onClick={stayOnTrain}
+                  className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-green-400 bg-green-900/30 hover:bg-green-900/50 border border-green-700/50 rounded transition-colors"
+                >
+                  Stay on train
+                </button>
+              )}
             </div>
           );
         })()}
 
         {/* Coin budget */}
         {coinBudget && (
-          <div className="text-sm text-amber-400 mb-2">
+          <div className="text-sm text-[#ffbf40] mb-2">
             Coins: {coinBudget.remaining}/{coinBudget.total}
           </div>
         )}
@@ -112,7 +166,7 @@ export default function Sidebar() {
         </div>
 
         {/* Ask Question */}
-        <div className="border-t border-gray-700 pt-3">
+        <div className="border-t border-[#1a3a6a]/40 pt-4 mt-4">
           <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">Ask Question</h3>
           <div className="space-y-2">
             {QUESTION_POOL.map((q) => {
@@ -130,29 +184,41 @@ export default function Sidebar() {
               const cost = getCost(q.category);
               const affordable = coinBudget ? canAfford(coinBudget, q.category) : true;
 
+              const icon = QUESTION_ICONS[q.id] ?? '?';
+              const cat = CATEGORY_STYLE[q.category] ?? CATEGORY_STYLE.radar;
+
               if (wasAsked && askedEntry) {
                 return (
-                  <div key={q.id} className="text-xs">
-                    <p className="text-gray-500">{q.text}</p>
-                    <p className="text-amber-400">{askedEntry.answer}</p>
+                  <div key={q.id} className={`flex items-start gap-1.5 text-xs px-2 py-1 rounded border ${cat.border} ${cat.bg} opacity-60`}>
+                    <span className={`${cat.dim} shrink-0 w-4 text-center font-bold`}>{icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-gray-500 truncate">{q.text}</p>
+                      <p className="text-[#ffbf40] font-medium">{askedEntry.answer}</p>
+                    </div>
                   </div>
                 );
               }
 
               if (!canAsk && cooldownLeft > 0) {
                 return (
-                  <div key={q.id} className="text-xs">
-                    <p className="text-gray-500">{q.text} <span className="text-gray-600">({cost} coin{cost > 1 ? 's' : ''})</span></p>
-                    <p className="text-gray-600">Cooldown: {Math.ceil(cooldownLeft)}m</p>
+                  <div key={q.id} className={`flex items-start gap-1.5 text-xs px-2 py-1 rounded border border-[#1a3a6a]/30 opacity-40`}>
+                    <span className="text-gray-600 shrink-0 w-4 text-center font-bold">{icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-gray-500 truncate">{q.text}</p>
+                      <p className="text-gray-600">Cooldown: {Math.ceil(cooldownLeft)}m</p>
+                    </div>
                   </div>
                 );
               }
 
               if (!affordable) {
                 return (
-                  <div key={q.id} className="text-xs">
-                    <p className="text-gray-500">{q.text} <span className="text-red-400/60">({cost} coin{cost > 1 ? 's' : ''})</span></p>
-                    <p className="text-red-400/60">Can't afford</p>
+                  <div key={q.id} className={`flex items-start gap-1.5 text-xs px-2 py-1 rounded border border-[#1a3a6a]/30 opacity-40`}>
+                    <span className="text-gray-600 shrink-0 w-4 text-center font-bold">{icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-gray-500 truncate">{q.text}</p>
+                      <p className="text-red-400/60">Can't afford</p>
+                    </div>
                   </div>
                 );
               }
@@ -160,12 +226,13 @@ export default function Sidebar() {
               return (
                 <button
                   key={q.id}
-                  onClick={() => seekerAskQuestion(q.id)}
+                  onClick={() => { setHoveredRadarRadius(null); seekerAskQuestion(q.id); }}
                   onMouseEnter={() => q.category === 'radar' && q.param && setHoveredRadarRadius(q.param)}
                   onMouseLeave={() => q.category === 'radar' && setHoveredRadarRadius(null)}
-                  className="w-full text-left px-2 py-1 text-xs text-white bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 transition-colors"
+                  className={`w-full flex items-start gap-1.5 text-left px-2 py-1 text-xs rounded border ${cat.border} ${cat.bg} hover:brightness-125 transition-all`}
                 >
-                  {q.text} <span className="text-amber-400/80">({cost} coin{cost > 1 ? 's' : ''})</span>
+                  <span className={`${cat.color} shrink-0 w-4 text-center font-bold`}>{icon}</span>
+                  <span className="text-white min-w-0">{q.text} <span className="text-[#ffbf40]/80">({cost})</span></span>
                 </button>
               );
             })}
@@ -177,24 +244,42 @@ export default function Sidebar() {
 
   // Hider mode sidebar
   return (
-    <div className="absolute bottom-4 left-4 z-10 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700/60 min-w-[220px]">
+    <div className="absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px]">
       <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
-      <p className="font-bold text-amber-400">{currentStation?.name ?? playerStationId}</p>
+      <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
       <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
 
       {/* Transit indicator for hider */}
       {playerTransit && (() => {
         const waiting = clock.gameMinutes < playerTransit.departureTime;
+        const onTrain = !waiting;
         const waitLeft = Math.ceil(playerTransit.departureTime - clock.gameMinutes);
         const travelLeft = Math.ceil(playerTransit.arrivalTime - Math.max(clock.gameMinutes, playerTransit.departureTime));
+        const canGetOff = onTrain && playerTransit.toStationId !== playerTransit.destinationStationId;
+        const exiting = onTrain && playerTransit.toStationId === playerTransit.destinationStationId;
+        const isDwelling = onTrain && findTransitTrainDwelling(playerTransit, clock.gameMinutes);
+        const bgClass = waiting ? 'bg-yellow-900/50 border-yellow-700' : exiting ? 'bg-red-900/50 border-red-700' : isDwelling ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700';
+        const labelClass = waiting ? 'text-yellow-400' : exiting ? 'text-red-400' : isDwelling ? 'text-green-400' : 'text-blue-400';
+        const label = waiting ? 'Waiting for Departure' : exiting ? 'Exiting at Next Stop' : isDwelling ? 'Stopped at Station' : 'In Transit';
+        const trainFinalStation = playerTransit.routeStations?.[playerTransit.routeStations.length - 1];
         return (
-          <div className={`${waiting ? 'bg-yellow-900/50 border-yellow-700' : 'bg-blue-900/50 border-blue-700'} border rounded p-2 mb-3`}>
-            <p className={`text-xs font-medium ${waiting ? 'text-yellow-400' : 'text-blue-400'}`}>
-              {waiting ? 'Waiting for Departure' : 'In Transit'}
+          <div className={`${bgClass} border rounded p-2 mb-3`}>
+            <p className={`text-xs font-medium ${labelClass}`}>
+              {label}
             </p>
             <p className="text-xs text-gray-300">
-              To: {stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
+              {exiting ? 'Getting off at: ' : 'Next: '}{stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
             </p>
+            {!exiting && playerTransit.destinationStationId && playerTransit.destinationStationId !== playerTransit.toStationId && (
+              <p className="text-xs text-gray-500">
+                Destination: {stations[playerTransit.destinationStationId]?.name ?? playerTransit.destinationStationId}
+              </p>
+            )}
+            {trainFinalStation && trainFinalStation !== playerTransit.destinationStationId && (
+              <p className="text-xs text-gray-500">
+                Train terminates: {stations[trainFinalStation]?.name ?? trainFinalStation}
+              </p>
+            )}
             <p className="text-xs text-gray-400">
               <span className={TRAIN_TYPE_COLORS[playerTransit.trainType]}>{playerTransit.trainType}</span>
               {waiting
@@ -202,6 +287,22 @@ export default function Sidebar() {
                 : <>{' '}— Arriving in {Math.ceil(playerTransit.arrivalTime - clock.gameMinutes)}min</>
               }
             </p>
+            {canGetOff && (
+              <button
+                onClick={getOffAtNextStation}
+                className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-red-400 bg-red-900/30 hover:bg-red-900/50 border border-red-700/50 rounded transition-colors"
+              >
+                {isDwelling ? 'Get off now!' : `Get off at ${stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}`}
+              </button>
+            )}
+            {exiting && (
+              <button
+                onClick={stayOnTrain}
+                className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-green-400 bg-green-900/30 hover:bg-green-900/50 border border-green-700/50 rounded transition-colors"
+              >
+                Stay on train
+              </button>
+            )}
           </div>
         );
       })()}
@@ -221,7 +322,7 @@ export default function Sidebar() {
             {!onTheTrain && (
               <button
                 onClick={() => { settleHere(); setTimeout(() => startSeeking(), 50); }}
-                className="w-full px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium transition-colors"
+                className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium transition-colors shadow-md shadow-emerald-500/20"
               >
                 Hide Here — Start Seeking
               </button>
@@ -231,7 +332,7 @@ export default function Sidebar() {
       })()}
 
       {phase === 'seeking' && (
-        <div className="border-t border-gray-700 pt-3 mt-1 space-y-2">
+        <div className="border-t border-[#1a3a6a]/40 pt-4 mt-4 space-y-2">
           <h3 className="text-xs text-gray-400 uppercase tracking-wide">Seeking Phase</h3>
 
           {seekerStation && (
@@ -248,7 +349,7 @@ export default function Sidebar() {
           )}
 
           {coinBudget && (
-            <div className="text-xs text-amber-400">
+            <div className="text-xs text-[#ffbf40]">
               Seeker coins: {coinBudget.remaining}/{coinBudget.total}
             </div>
           )}
@@ -257,8 +358,8 @@ export default function Sidebar() {
           {(() => {
             if (isAISeeking) {
               return (
-                <div className="flex items-center gap-2 text-xs text-amber-400">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <div className="flex items-center gap-2 text-xs text-[#ffbf40]">
+                  <span className="w-2 h-2 rounded-full bg-[#ffbf40] animate-pulse" />
                   {seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...'}
                 </div>
               );
@@ -309,7 +410,7 @@ export default function Sidebar() {
               <p className="text-xs text-gray-300 truncate">
                 {questionsAsked[questionsAsked.length - 1].question}
               </p>
-              <p className="text-xs text-amber-400 truncate">
+              <p className="text-xs text-[#ffbf40] truncate">
                 {questionsAsked[questionsAsked.length - 1].answer}
               </p>
             </div>

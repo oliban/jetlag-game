@@ -3,7 +3,6 @@ import GameMap from './map/GameMap';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import SetupScreen from './components/SetupScreen';
-import QuestionLog from './components/QuestionLog';
 import DebugPanel from './components/DebugPanel';
 import RoundEndScreen from './components/RoundEndScreen';
 import DepartureBoardModal from './components/DepartureBoardModal';
@@ -31,7 +30,7 @@ function App() {
   const seekerTransit = useGameStore((s) => s.seekerTransit);
   const rafRef = useRef<number>(0);
 
-  // Keyboard shortcuts for speed: 1=1x, 2=2x, 3=5x, 4=10x, 5=pause/unpause
+  // Keyboard shortcuts for speed: 1=1x, 2=2x, 3=5x, 4=10x, Space=pause/unpause
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -41,7 +40,7 @@ function App() {
         case '2': setSpeed(2); break;
         case '3': setSpeed(5); break;
         case '4': setSpeed(10); break;
-        case '5': togglePause(); break;
+        case ' ': e.preventDefault(); togglePause(); break;
       }
     };
     window.addEventListener('keydown', handler);
@@ -127,7 +126,6 @@ function App() {
       <GameMap />
       <Header />
       <Sidebar />
-      <QuestionLog />
       <DebugPanel />
       <DepartureBoardModal />
       <SetupScreen />

@@ -5,7 +5,7 @@ import { getUpcomingDepartures, type RouteDeparture } from '../engine/trainRoute
 import { formatGameTime } from '../engine/gameLoop';
 
 const TRAIN_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  express: { label: 'EXP', color: 'text-yellow-400', bg: 'bg-yellow-400/15' },
+  express: { label: 'EXP', color: 'text-[#ffbf40]', bg: 'bg-[#ffbf40]/15' },
   regional: { label: 'REG', color: 'text-blue-400', bg: 'bg-blue-400/15' },
   local: { label: 'LOC', color: 'text-gray-400', bg: 'bg-gray-400/15' },
 };
@@ -148,11 +148,11 @@ export default function DepartureBoardModal() {
       className="fixed z-20"
       style={{ left: pos.x, top: pos.y, width: 320 }}
     >
-      <div className="bg-gray-950 border border-gray-700/60 rounded-lg overflow-hidden shadow-2xl">
+      <div className="bg-[#061e45] border border-[#1a3a6a]/60 rounded-lg overflow-hidden shadow-2xl">
         {/* Current time bar -- always visible */}
         <div
           data-drag-handle
-          className="bg-gray-900 px-3 py-1 flex justify-between items-center cursor-move select-none border-b border-gray-800"
+          className="bg-[#0a1a3a] px-3 py-1 flex justify-between items-center cursor-move select-none border-b border-[#0c2a52]"
         >
           <span className="text-[10px] text-gray-500 uppercase tracking-wide">Current Time</span>
           <span className="text-sm font-bold text-white tabular-nums">{formatGameTime(clock.gameMinutes)}</span>
@@ -160,9 +160,9 @@ export default function DepartureBoardModal() {
         {/* Station header */}
         <div
           data-drag-handle
-          className="bg-gray-800 px-3 py-1.5 flex justify-between items-center cursor-move select-none"
+          className="bg-[#0c2a52] px-3 py-1.5 flex justify-between items-center cursor-move select-none"
         >
-          <span className="text-xs font-bold text-white uppercase tracking-wider truncate">
+          <span className="text-xs font-bold text-[#ffbf40] uppercase tracking-wider truncate font-mono">
             {showingSeekerBoard && <span className="text-red-400 mr-1">Seeker</span>}
             {onTheTrain ? `\u2192 ${boardStation?.name ?? boardStationId}` : (boardStation?.name ?? boardStationId)}
           </span>
@@ -172,7 +172,7 @@ export default function DepartureBoardModal() {
         </div>
 
         {/* Column headers */}
-        <div className="grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.4rem_2.4rem] px-3 py-1 text-[10px] text-gray-600 uppercase tracking-wide border-b border-gray-800">
+        <div className="grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.4rem_2.4rem] px-3 py-1 text-[10px] text-gray-500 uppercase tracking-wide border-b border-[#0c2a52]">
           <span>Time</span>
           <span>Route</span>
           <span className="text-center">Type</span>
@@ -186,7 +186,8 @@ export default function DepartureBoardModal() {
           const tl = TRAIN_TYPE_LABELS[dep.route.trainType];
           const routeDesc = formatRouteDesc(dep.remainingStops, stations);
           const minsUntil = Math.max(0, Math.ceil(dep.departureTime - clock.gameMinutes));
-          const imminent = minsUntil <= 5 && minsUntil > 0;
+          const isDwelling = dep.arrivalTime <= clock.gameMinutes && dep.departureTime > clock.gameMinutes;
+          const imminent = !isDwelling && minsUntil <= 5 && minsUntil > 0;
           const totalDur = dep.remainingStops.length > 0
             ? Math.round(dep.remainingStops[dep.remainingStops.length - 1].arrivalMin - dep.departureTime)
             : 0;
@@ -208,15 +209,15 @@ export default function DepartureBoardModal() {
             <div key={`${dep.route.id}-${dep.direction}-${dep.departureTime}`}>
               <div
                 onClick={rowClickable ? () => setExpandedIdx(isExpanded ? null : idx) : undefined}
-                className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.4rem_2.4rem] px-3 py-1 border-b border-gray-900 items-center ${isSelected ? 'bg-amber-900/30 border-l-2 border-l-amber-400' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${rowClickable ? 'cursor-pointer hover:bg-gray-800/80 transition-colors' : ''}`}
+                className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.4rem_2.4rem] px-3 py-1 border-b border-[#0a1a3a] items-center ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${rowClickable ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
               >
                 <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : 'text-white'}`}>
                   {formatGameTime(dep.departureTime)}
                 </span>
-                <span className={`text-xs truncate pr-1 ${blocked ? 'text-gray-600 line-through' : 'text-amber-400'}`} title={routeDesc}>
+                <span className={`text-xs truncate pr-1 ${blocked ? 'text-gray-600 line-through' : 'text-[#ffbf40]'}`} title={routeDesc}>
                   {routeDesc}
                 </span>
-                <span className={`text-[10px] font-bold ${blocked ? 'text-gray-600' : tl.color} ${blocked ? 'bg-gray-800' : tl.bg} rounded text-center px-1 py-0.5 leading-none`}>
+                <span className={`text-[10px] font-bold ${blocked ? 'text-gray-600' : tl.color} ${blocked ? 'bg-[#0c2a52]' : tl.bg} rounded text-center px-1 py-0.5 leading-none`}>
                   {tl.label}
                 </span>
                 <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600' : 'text-gray-500'}`}>
@@ -225,14 +226,14 @@ export default function DepartureBoardModal() {
                 <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600 line-through' : 'text-gray-500'}`}>
                   {totalDur}m
                 </span>
-                <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600' : imminent ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
-                  {minsUntil === 0 ? 'NOW' : `${minsUntil}m`}
+                <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600' : isDwelling ? 'text-green-400 font-bold' : imminent ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+                  {isDwelling ? 'BRD' : minsUntil === 0 ? 'NOW' : `${minsUntil}m`}
                 </span>
               </div>
 
               {/* Expanded stop picker */}
               {isExpanded && (
-                <div className="bg-gray-900/60 border-b border-gray-800">
+                <div className="bg-[#0a1a3a]/60 border-b border-[#0c2a52]">
                   {dep.remainingStops.map((stop, sIdx) => {
                     const stopStation = stations[stop.stationId];
                     const stopName = stopStation?.name ?? stop.stationId;
@@ -258,7 +259,7 @@ export default function DepartureBoardModal() {
                               e.stopPropagation();
                               handleBoard(dep, stop.stationId);
                             }}
-                            className="text-[10px] font-bold text-amber-400 bg-amber-400/10 hover:bg-amber-400/25 rounded px-1.5 py-0.5 transition-colors"
+                            className="text-[10px] font-bold text-[#ffbf40] bg-[#ffbf40]/10 hover:bg-[#ffbf40]/25 rounded px-1.5 py-0.5 transition-colors"
                           >
                             Board
                           </button>

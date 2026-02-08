@@ -19,10 +19,15 @@ export type TrainType = 'express' | 'regional' | 'local';
 
 export interface TransitState {
   fromStationId: string;
-  toStationId: string;
-  departureTime: number; // game minutes
-  arrivalTime: number; // game minutes
+  toStationId: string;         // immediate next station
+  departureTime: number;       // game minutes
+  arrivalTime: number;         // arrival at FINAL destination (game minutes)
   trainType: TrainType;
+  // Route fields for multi-stop travel:
+  routeId?: string;
+  routeStations?: string[];    // full route stations in travel direction
+  destinationStationId?: string; // player's chosen stop
+  nextArrivalTime?: number;    // arrival at immediate next station
 }
 
 export type SeekerMode = 'single' | 'consensus';
