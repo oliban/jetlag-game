@@ -392,8 +392,17 @@ export default function GameMap() {
     el.style.backgroundColor = color;
     el.style.border = '3px solid white';
     el.style.boxShadow = glow;
+    // If in transit, use train position instead of snapping to station
+    const transitState = useGameStore.getState().playerTransit;
+    const clockNow = useGameStore.getState().clock.gameMinutes;
+    let markerPos: [number, number] = [station.lng, station.lat];
+    if (transitState && clockNow >= transitState.departureTime) {
+      const trainPos = findTransitTrainPosition(transitState, clockNow);
+      if (trainPos) markerPos = trainPos;
+    }
+
     playerMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([station.lng, station.lat])
+      .setLngLat(markerPos)
       .addTo(map);
     logger.info('GameMap', `Player marker CREATED at ${station.name} (role=${playerRole})`);
 
