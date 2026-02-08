@@ -98,20 +98,30 @@ export default function Sidebar() {
           const canGetOff = onTrain && playerTransit.toStationId !== playerTransit.destinationStationId;
           const exiting = onTrain && playerTransit.toStationId === playerTransit.destinationStationId;
           const isDwelling = onTrain && findTransitTrainDwelling(playerTransit, clock.gameMinutes);
-          // Check if next stop is the route terminus (can't stay on train past terminus)
-          const isRoutTerminus = (() => {
-            if (!playerTransit.routeId) return true;
+          // Look up the actual route terminus (not just the player's destination slice)
+          const routeInfo = (() => {
+            if (!playerTransit.routeId) return { isTerminus: true, terminus: null as string | null };
             const route = getRoutes().find(r => r.id === playerTransit.routeId);
-            if (!route) return true;
+            if (!route) return { isTerminus: true, terminus: null };
             const lastFwd = route.stations[route.stations.length - 1];
             const lastRev = route.stations[0];
-            return playerTransit.toStationId === lastFwd || playerTransit.toStationId === lastRev;
+            const isTerminus = playerTransit.toStationId === lastFwd || playerTransit.toStationId === lastRev;
+            // Determine which direction we're traveling to find the terminus
+            const from = playerTransit.fromStationId;
+            const fwdIdx = route.stations.indexOf(from);
+            const revStations = [...route.stations].reverse();
+            const revIdx = revStations.indexOf(from);
+            const nextStation = playerTransit.toStationId;
+            const fwdNextIdx = route.stations.indexOf(nextStation);
+            if (fwdIdx >= 0 && fwdNextIdx > fwdIdx) return { isTerminus, terminus: lastFwd };
+            if (revIdx >= 0) return { isTerminus, terminus: revStations[revStations.length - 1] };
+            return { isTerminus, terminus: lastFwd };
           })();
-          const canStay = exiting && !isRoutTerminus;
+          const canStay = exiting && !routeInfo.isTerminus;
           const bgClass = waiting ? 'bg-yellow-900/50 border-yellow-700' : exiting ? 'bg-red-900/50 border-red-700' : isDwelling ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700';
           const labelClass = waiting ? 'text-yellow-400' : exiting ? 'text-red-400' : isDwelling ? 'text-green-400' : 'text-blue-400';
           const label = waiting ? 'Waiting for Departure' : exiting ? 'Exiting at Next Stop' : isDwelling ? 'Stopped at Station' : 'In Transit';
-          const trainFinalStation = playerTransit.routeStations?.[playerTransit.routeStations.length - 1];
+          const trainTerminus = routeInfo.terminus;
           return (
             <div className={`${bgClass} border rounded p-2 mb-3`}>
               <p className={`text-xs font-medium ${labelClass}`}>
@@ -125,9 +135,9 @@ export default function Sidebar() {
                   Destination: {stations[playerTransit.destinationStationId]?.name ?? playerTransit.destinationStationId}
                 </p>
               )}
-              {trainFinalStation && trainFinalStation !== playerTransit.destinationStationId && (
+              {trainTerminus && trainTerminus !== playerTransit.destinationStationId && (
                 <p className="text-xs text-gray-500">
-                  Train terminates: {stations[trainFinalStation]?.name ?? trainFinalStation}
+                  Train terminates: {stations[trainTerminus]?.name ?? trainTerminus}
                 </p>
               )}
               <p className="text-xs text-gray-400">
@@ -269,19 +279,28 @@ export default function Sidebar() {
         const canGetOff = onTrain && playerTransit.toStationId !== playerTransit.destinationStationId;
         const exiting = onTrain && playerTransit.toStationId === playerTransit.destinationStationId;
         const isDwelling = onTrain && findTransitTrainDwelling(playerTransit, clock.gameMinutes);
-        const isRouteTerminus = (() => {
-          if (!playerTransit.routeId) return true;
+        const routeInfo = (() => {
+          if (!playerTransit.routeId) return { isTerminus: true, terminus: null as string | null };
           const route = getRoutes().find(r => r.id === playerTransit.routeId);
-          if (!route) return true;
+          if (!route) return { isTerminus: true, terminus: null };
           const lastFwd = route.stations[route.stations.length - 1];
           const lastRev = route.stations[0];
-          return playerTransit.toStationId === lastFwd || playerTransit.toStationId === lastRev;
+          const isTerminus = playerTransit.toStationId === lastFwd || playerTransit.toStationId === lastRev;
+          const from = playerTransit.fromStationId;
+          const fwdIdx = route.stations.indexOf(from);
+          const revStations = [...route.stations].reverse();
+          const revIdx = revStations.indexOf(from);
+          const nextStation = playerTransit.toStationId;
+          const fwdNextIdx = route.stations.indexOf(nextStation);
+          if (fwdIdx >= 0 && fwdNextIdx > fwdIdx) return { isTerminus, terminus: lastFwd };
+          if (revIdx >= 0) return { isTerminus, terminus: revStations[revStations.length - 1] };
+          return { isTerminus, terminus: lastFwd };
         })();
-        const canStay = exiting && !isRouteTerminus;
+        const canStay = exiting && !routeInfo.isTerminus;
         const bgClass = waiting ? 'bg-yellow-900/50 border-yellow-700' : exiting ? 'bg-red-900/50 border-red-700' : isDwelling ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700';
         const labelClass = waiting ? 'text-yellow-400' : exiting ? 'text-red-400' : isDwelling ? 'text-green-400' : 'text-blue-400';
         const label = waiting ? 'Waiting for Departure' : exiting ? 'Exiting at Next Stop' : isDwelling ? 'Stopped at Station' : 'In Transit';
-        const trainFinalStation = playerTransit.routeStations?.[playerTransit.routeStations.length - 1];
+        const trainTerminus = routeInfo.terminus;
         return (
           <div className={`${bgClass} border rounded p-2 mb-3`}>
             <p className={`text-xs font-medium ${labelClass}`}>
@@ -295,9 +314,9 @@ export default function Sidebar() {
                 Destination: {stations[playerTransit.destinationStationId]?.name ?? playerTransit.destinationStationId}
               </p>
             )}
-            {trainFinalStation && trainFinalStation !== playerTransit.destinationStationId && (
+            {trainTerminus && trainTerminus !== playerTransit.destinationStationId && (
               <p className="text-xs text-gray-500">
-                Train terminates: {stations[trainFinalStation]?.name ?? trainFinalStation}
+                Train terminates: {stations[trainTerminus]?.name ?? trainTerminus}
               </p>
             )}
             <p className="text-xs text-gray-400">
