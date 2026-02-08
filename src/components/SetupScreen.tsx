@@ -113,37 +113,35 @@ export default function SetupScreen() {
 
                 {/* Role cards */}
                 <div className="grid grid-cols-2 gap-4 mb-8">
-                  {/* Hider — gold themed */}
-                  <button
-                    onClick={() => setSelectedRole('hider')}
-                    onMouseEnter={() => setHoveredCard('hider')}
-                    onMouseLeave={() => setHoveredCard(null)}
-                    className="group relative text-left rounded-xl overflow-hidden transition-all duration-300"
+                  {/* Hider — disabled, coming soon */}
+                  <div
+                    className="relative text-left rounded-xl overflow-hidden cursor-not-allowed opacity-50"
                     style={{
-                      background: hoveredCard === 'hider'
-                        ? `linear-gradient(135deg, ${gold}1a 0%, ${gold}08 100%)`
-                        : `linear-gradient(135deg, ${gold}0a 0%, rgba(255,255,255,0.02) 100%)`,
-                      boxShadow: hoveredCard === 'hider'
-                        ? `0 0 0 1.5px ${gold}, 0 8px 24px -8px ${gold}30`
-                        : `0 0 0 1px ${gold}20`,
+                      background: `linear-gradient(135deg, ${gold}0a 0%, rgba(255,255,255,0.02) 100%)`,
+                      boxShadow: `0 0 0 1px ${gold}15`,
                     }}
                   >
                     <div className="p-5">
-                      <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 transition-colors duration-300" style={{
-                        background: hoveredCard === 'hider' ? `${gold}25` : `${gold}12`,
-                      }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hoveredCard === 'hider' ? gold : `${gold}90`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        </svg>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${gold}10` }}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={`${gold}60`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                          </svg>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{
+                          fontFamily: font, color: gold, background: `${gold}15`, border: `1px solid ${gold}25`,
+                        }}>
+                          Coming soon
+                        </span>
                       </div>
-                      <p className="font-semibold text-[15px] mb-1" style={{ fontFamily: font, color: '#fff' }}>
+                      <p className="font-semibold text-[15px] mb-1" style={{ fontFamily: font, color: 'rgba(255,255,255,0.5)' }}>
                         Play as Hider
                       </p>
-                      <p className="text-[13px] leading-relaxed" style={{ fontFamily: font, color: 'rgba(255,255,255,0.45)' }}>
+                      <p className="text-[13px] leading-relaxed" style={{ fontFamily: font, color: 'rgba(255,255,255,0.3)' }}>
                         Evade AI seekers across the continent
                       </p>
                     </div>
-                  </button>
+                  </div>
 
                   {/* Seeker — red themed */}
                   <button
@@ -172,7 +170,7 @@ export default function SetupScreen() {
                         Play as Seeker
                       </p>
                       <p className="text-[13px] leading-relaxed" style={{ fontFamily: font, color: 'rgba(255,255,255,0.45)' }}>
-                        Hunt an AI hider — no API key needed
+                        Hunt down an AI hider across Europe
                       </p>
                     </div>
                   </button>
