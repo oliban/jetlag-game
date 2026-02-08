@@ -10,24 +10,29 @@ export default function SetupScreen() {
   const setOpenaiApiKey = useGameStore((s) => s.setOpenaiApiKey);
 
   const [selectedRole, setSelectedRole] = useState<'hider' | 'seeker' | null>(null);
-  const [localKey, setLocalKey] = useState(storedApiKey);
-  const [localOpenaiKey, setLocalOpenaiKey] = useState(storedOpenaiKey);
+  // Never pre-fill API keys in the UI — env keys stay hidden in the store
+  const [localKey, setLocalKey] = useState('');
+  const [localOpenaiKey, setLocalOpenaiKey] = useState('');
   const [error, setError] = useState('');
   const [hoveredCard, setHoveredCard] = useState<'hider' | 'seeker' | null>(null);
 
   if (phase !== 'setup') return null;
 
-  const hasBothKeys = localKey.trim() !== '' && localOpenaiKey.trim() !== '';
+  const hasAnthropicKey = localKey.trim() !== '' || storedApiKey !== '';
+  const hasOpenaiKey = localOpenaiKey.trim() !== '' || storedOpenaiKey !== '';
+  const hasBothKeys = hasAnthropicKey && hasOpenaiKey;
 
   const handleStart = () => {
-    const key = localKey.trim();
+    // Use typed key, or fall back to env-backed key already in the store
+    const key = localKey.trim() || storedApiKey;
     if (!key) {
       setError('Please enter an Anthropic API key to start.');
       return;
     }
     setApiKey(key);
-    if (localOpenaiKey.trim()) {
-      setOpenaiApiKey(localOpenaiKey.trim());
+    const oaiKey = localOpenaiKey.trim() || storedOpenaiKey;
+    if (oaiKey) {
+      setOpenaiApiKey(oaiKey);
     }
     setError('');
     startGame();
@@ -249,7 +254,7 @@ export default function SetupScreen() {
                       setLocalKey(e.target.value);
                       if (error) setError('');
                     }}
-                    placeholder="sk-ant-..."
+                    placeholder={storedApiKey ? 'Using key from .env' : 'sk-ant-...'}
                     className="w-full px-4 py-3 rounded-xl text-[14px] focus:outline-none transition-all duration-200"
                     style={{
                       background: 'rgba(255,255,255,0.05)',
@@ -279,7 +284,7 @@ export default function SetupScreen() {
                     type="password"
                     value={localOpenaiKey}
                     onChange={(e) => setLocalOpenaiKey(e.target.value)}
-                    placeholder="sk-..."
+                    placeholder={storedOpenaiKey ? 'Using key from .env' : 'sk-...'}
                     className="w-full px-4 py-3 rounded-xl text-[14px] focus:outline-none transition-all duration-200"
                     style={{
                       background: 'rgba(255,255,255,0.05)',
