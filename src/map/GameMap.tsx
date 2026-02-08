@@ -5,6 +5,7 @@ import { getStationList, getConnections, getNeighbors, getStations } from '../da
 import { useGameStore } from '../store/gameStore';
 import type { Station } from '../types/game';
 import { renderConstraints } from './constraintRenderer';
+import { initTrainLayer, updateTrainPositions, initTrainHover } from './trainRenderer';
 import { logger } from '../engine/logger';
 import { classifyConnection } from '../engine/trainSchedule';
 
@@ -234,6 +235,10 @@ export default function GameMap() {
           'line-dasharray': [3, 2],
         },
       }, 'station-dots');
+
+      // Train visualization layer (above connection-lines, below station-dots)
+      initTrainLayer(map);
+      initTrainHover(map, getStations());
 
       setMapLoaded(true);
     });
@@ -584,6 +589,19 @@ export default function GameMap() {
     });
   }, [hoveredRadarRadius, playerStationId, playerTransit, clock.gameMinutes, mapLoaded]);
 
+  // Update train positions on clock tick (throttled to ~100ms)
+  const lastTrainUpdateRef = useRef(0);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || phase === 'setup') return;
+
+    const now = performance.now();
+    if (now - lastTrainUpdateRef.current < 100) return;
+    lastTrainUpdateRef.current = now;
+
+    updateTrainPositions(map, clock.gameMinutes);
+  }, [clock.gameMinutes, mapLoaded, phase]);
+
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="w-full h-full" />
@@ -619,6 +637,16 @@ export default function GameMap() {
       <style>{`
         .mapboxgl-marker {
           z-index: 5 !important;
+        }
+        .train-popup .mapboxgl-popup-content {
+          background: rgba(17, 24, 39, 0.95);
+          border: 1px solid #374151;
+          border-radius: 8px;
+          padding: 8px 12px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        .train-popup .mapboxgl-popup-tip {
+          border-top-color: rgba(17, 24, 39, 0.95);
         }
       `}</style>
     </div>
