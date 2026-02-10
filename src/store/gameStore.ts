@@ -634,7 +634,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     // --- Apply delays/accidents to player transit ---
-    let gameResult = state.gameResult;
+    let gameResult: GameStore['gameResult'] = state.gameResult;
     let phase = state.phase as GamePhase;
     if (playerTransit && playerTransit.routeId) {
       // Compute train instance ID for player's train

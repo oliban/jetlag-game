@@ -1,7 +1,7 @@
-import mapboxgl from 'mapbox-gl';
+import type { Map as MapboxMap, GeoJSONSource } from 'mapbox-gl';
 import type { WeatherZone } from '../types/disruptions';
 
-export function initWeatherLayers(map: mapboxgl.Map): void {
+export function initWeatherLayers(map: MapboxMap): void {
   // Three concentric sources for gradient fade effect
   for (const ring of ['outer', 'mid', 'inner'] as const) {
     map.addSource(`weather-zones-${ring}`, {
@@ -130,7 +130,7 @@ function buildZonePolygon(
   return coords;
 }
 
-export function updateWeatherZones(map: mapboxgl.Map, zones: WeatherZone[]): void {
+export function updateWeatherZones(map: MapboxMap, zones: WeatherZone[]): void {
   const rings = [
     { key: 'outer', scale: 1.0 },
     { key: 'mid', scale: 0.8 },
@@ -147,7 +147,7 @@ export function updateWeatherZones(map: mapboxgl.Map, zones: WeatherZone[]): voi
       };
     });
 
-    const source = map.getSource(`weather-zones-${ring.key}`) as mapboxgl.GeoJSONSource;
+    const source = map.getSource(`weather-zones-${ring.key}`) as GeoJSONSource;
     if (source) {
       source.setData({ type: 'FeatureCollection', features });
     }

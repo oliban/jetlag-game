@@ -15,7 +15,7 @@ interface ReplayMiniMapProps {
   hiderStationId: string;
   seekerStartStationId: string | null;
   totalGameMinutes: number;
-  gameResult: 'seeker_wins' | 'hider_wins';
+  gameResult: 'seeker_wins' | 'hider_wins' | 'fatal_accident' | 'seeker_killed';
   playerHistory?: TravelHistoryEntry[];
   playerStartStationId?: string | null;
   playerRole?: 'hider' | 'seeker';

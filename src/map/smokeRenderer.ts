@@ -1,7 +1,7 @@
-import mapboxgl from 'mapbox-gl';
+import type { Map as MapboxMap, GeoJSONSource } from 'mapbox-gl';
 import type { TrainAccident } from '../types/disruptions';
 
-export function initSmokeLayers(map: mapboxgl.Map): void {
+export function initSmokeLayers(map: MapboxMap): void {
   map.addSource('accident-smoke', {
     type: 'geojson',
     data: { type: 'FeatureCollection', features: [] },
@@ -48,11 +48,11 @@ export function initSmokeLayers(map: mapboxgl.Map): void {
 }
 
 export function updateSmokePositions(
-  map: mapboxgl.Map,
+  map: MapboxMap,
   accidents: Map<string, TrainAccident>,
   gameMinutes: number,
 ): void {
-  const source = map.getSource('accident-smoke') as mapboxgl.GeoJSONSource | undefined;
+  const source = map.getSource('accident-smoke') as GeoJSONSource | undefined;
   if (!source) return;
 
   const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
