@@ -282,7 +282,11 @@ export default function GameMap() {
 
       // Train visualization layer (above connection-lines, below station-dots)
       initTrainLayer(map);
-      initTrainHover(map, getStations(), () => useGameStore.getState().playerStationId);
+      const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+
+      if (!isTouchDevice) {
+        initTrainHover(map, getStations(), () => useGameStore.getState().playerStationId);
+      }
       initTrainClick(
         map,
         () => useGameStore.getState().playerStationId,
@@ -292,13 +296,15 @@ export default function GameMap() {
       setMapLoaded(true);
     });
 
-    // Cursor
-    map.on('mouseenter', 'station-dots', () => {
-      map.getCanvas().style.cursor = 'pointer';
-    });
-    map.on('mouseleave', 'station-dots', () => {
-      map.getCanvas().style.cursor = '';
-    });
+    // Cursor (skip on touch devices — no hover cursor needed)
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      map.on('mouseenter', 'station-dots', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'station-dots', () => {
+        map.getCanvas().style.cursor = '';
+      });
+    }
 
     return () => {
       map.remove();
