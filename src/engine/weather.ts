@@ -144,8 +144,8 @@ export function createWeatherZone(
   gameMinutes: number,
   rng: SeededRandom,
 ): WeatherZone {
-  const centerLat = 40 + rng.random() * 16;   // 40-56
-  const centerLng = -5 + rng.random() * 30;   // -5 to 25
+  const centerLat = 37 + rng.random() * 24;   // 37-61
+  const centerLng = -10 + rng.random() * 37;  // -10 to 27
   const radiusKm = 75 + rng.random() * 225;   // 75-300
   const windBearing = rng.random() * 360;
   const windSpeedKmh = 30 + rng.random() * 50; // 30-80

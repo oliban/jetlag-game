@@ -83,7 +83,7 @@ describe('activeTrains', () => {
         expect(train.lat).toBeGreaterThan(30);
         expect(train.lat).toBeLessThan(65);
         expect(train.lng).toBeGreaterThan(-10);
-        expect(train.lng).toBeLessThan(25);
+        expect(train.lng).toBeLessThan(28);
       }
     });
 

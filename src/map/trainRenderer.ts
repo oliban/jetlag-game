@@ -35,6 +35,18 @@ const RAILWAY_NAMES: Record<string, string> = {
   Poland: 'PKP',
   Hungary: 'MÁV',
   Denmark: 'DSB',
+  Portugal: 'CP',
+  Sweden: 'SJ',
+  Norway: 'Vy',
+  Bulgaria: 'BDZ',
+  Croatia: 'HZ',
+  Greece: 'Hellenic Train',
+  Romania: 'CFR',
+  Serbia: 'SZ',
+  Slovenia: 'SZ',
+  'North Macedonia': 'MZ',
+  Slovakia: 'ZSSK',
+  Luxembourg: 'CFL',
 };
 
 /** All countries that have railway colors */

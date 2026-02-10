@@ -9,20 +9,32 @@ export function buildSeekerSystemPrompt(): string {
 - You can travel along rail connections between adjacent stations. You cannot jump to non-adjacent stations.
 
 ## STATION NETWORK
-The complete network has 47 stations across 14 countries:
-- France: Paris, Lyon Part-Dieu, Marseille Saint-Charles, Lille Europe, Strasbourg, Bordeaux Saint-Jean, Nice Ville
-- UK: London, Edinburgh Waverley, Manchester Piccadilly, Birmingham New Street
-- Germany: Berlin Hauptbahnhof, München Hbf, Frankfurt (Main) Hbf, Hamburg Hbf, Köln Hbf, Stuttgart Hbf, Nürnberg Hbf, Dresden Hbf, Hannover Hbf
-- Netherlands: Amsterdam Centraal, Rotterdam Centraal, Utrecht Centraal
-- Belgium: Bruxelles-Midi, Antwerpen-Centraal, Brugge
-- Switzerland: Zürich HB, Bern, Genève-Cornavin, Basel SBB, Interlaken Ost
-- Austria: Wien Hbf, Salzburg Hbf, Innsbruck Hbf
-- Italy: Milano Centrale, Roma Termini, Firenze Santa Maria Novella, Venezia Santa Lucia, Napoli Centrale, Torino Porta Nuova, Bologna Centrale
-- Spain: Barcelona Sants, Madrid Puerta de Atocha
-- Czech Republic: Praha hlavní nádraží
-- Poland: Warszawa Centralna
-- Hungary: Budapest Keleti
-- Denmark: København H
+The complete network has 97 stations across 25 countries:
+- France: Paris, Lyon Part-Dieu, Marseille Saint-Charles, Lille Europe, Strasbourg, Bordeaux Saint-Jean, Nice Ville, Toulouse-Matabiau, Montpellier Saint-Roch, Nantes, Rennes, Dijon Ville
+- UK: London, Edinburgh Waverley, Manchester Piccadilly, Birmingham New Street, Glasgow Central, York
+- Germany: Berlin Hauptbahnhof, München Hbf, Frankfurt (Main) Hbf, Hamburg Hbf, Köln Hbf, Stuttgart Hbf, Nürnberg Hbf, Dresden Hbf, Hannover Hbf, Leipzig Hbf, Dortmund Hbf, Düsseldorf Hbf, Freiburg (Breisgau) Hbf
+- Netherlands: Amsterdam Centraal, Rotterdam Centraal, Utrecht Centraal, Eindhoven
+- Belgium: Bruxelles-Midi, Antwerpen-Centraal, Brugge, Liège-Guillemins
+- Switzerland: Zürich HB, Bern, Genève-Cornavin, Basel SBB, Interlaken Ost, Lausanne
+- Austria: Wien Hbf, Salzburg Hbf, Innsbruck Hbf, Graz Hbf, Linz Hbf
+- Italy: Milano Centrale, Roma Termini, Firenze Santa Maria Novella, Venezia Santa Lucia, Napoli Centrale, Torino Porta Nuova, Bologna Centrale, Verona Porta Nuova, Bari Centrale, Genova Piazza Principe, Trieste Centrale, Padova
+- Spain: Barcelona Sants, Madrid Puerta de Atocha, Sevilla Santa Justa, Valencia Joaquín Sorolla, Bilbao Abando, Zaragoza Delicias
+- Czech Republic: Praha hlavní nádraží, Brno hlavní nádraží
+- Poland: Warszawa Centralna, Kraków Główny, Gdańsk Główny, Wrocław Główny, Poznań Główny
+- Hungary: Budapest Keleti, Debrecen
+- Denmark: København H, Aarhus H
+- Portugal: Lisbon Oriente, Porto Campanhã
+- Sweden: Stockholm Central, Göteborg Central, Malmö Central
+- Norway: Oslo Sentralstasjon
+- Bulgaria: Sofia Central
+- Croatia: Zagreb Glavni Kolodvor, Split
+- Greece: Athens Larissa, Thessaloniki
+- Romania: București Nord, Cluj-Napoca
+- Serbia: Beograd Centar
+- Slovenia: Ljubljana
+- North Macedonia: Skopje
+- Slovakia: Bratislava hlavná stanica
+- Luxembourg: Luxembourg Gare Centrale
 
 ## TRAIN SCHEDULES
 Travel is NOT instant. Each connection has a train type based on distance:

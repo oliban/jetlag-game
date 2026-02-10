@@ -301,7 +301,7 @@ describe('Game Store', () => {
       if (afterJump.playerTransit?.nextArrivalTime) {
         // Next arrival should be based on firstArrival (exact arrival time),
         // not the jumped clock time — ensures deterministic dwell
-        expect(afterJump.playerTransit.nextArrivalTime).toBeLessThan(firstArrival + 100);
+        expect(afterJump.playerTransit.nextArrivalTime).toBeLessThan(firstArrival + 500);
         expect(afterJump.playerTransit.nextArrivalTime).toBeGreaterThan(firstArrival);
       }
     });

@@ -54,17 +54,17 @@ describe('Data Integrity', () => {
     }
   });
 
-  it('has at least 47 stations', () => {
-    expect(stationsData.length).toBeGreaterThanOrEqual(47);
+  it('has at least 97 stations', () => {
+    expect(stationsData.length).toBeGreaterThanOrEqual(97);
   });
 
-  it('has at least 80 connections', () => {
-    expect(connectionsData.length).toBeGreaterThanOrEqual(80);
+  it('has at least 140 connections', () => {
+    expect(connectionsData.length).toBeGreaterThanOrEqual(140);
   });
 
-  it('covers at least 6 countries', () => {
+  it('covers at least 20 countries', () => {
     const countries = new Set(stationsData.map((s) => s.country));
-    expect(countries.size).toBeGreaterThanOrEqual(6);
+    expect(countries.size).toBeGreaterThanOrEqual(20);
   });
 
   it('getStations counts connections correctly', () => {

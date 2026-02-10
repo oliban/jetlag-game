@@ -56,7 +56,7 @@ describe('Pathfinding (Dijkstra)', () => {
 
   it('all stations are reachable from Paris (connected graph)', () => {
     const reachable = findReachable('paris');
-    // Should reach all ~47 stations (the graph should be connected)
-    expect(Object.keys(reachable).length).toBeGreaterThanOrEqual(47);
+    // Should reach all ~97 stations (the graph should be connected)
+    expect(Object.keys(reachable).length).toBeGreaterThanOrEqual(97);
   });
 });

@@ -15,6 +15,18 @@ export const COUNTRY_TO_ISO3: Record<string, string> = {
   Poland: 'POL',
   Hungary: 'HUN',
   Denmark: 'DNK',
+  Portugal: 'PRT',
+  Sweden: 'SWE',
+  Norway: 'NOR',
+  Bulgaria: 'BGR',
+  Croatia: 'HRV',
+  Greece: 'GRC',
+  Romania: 'ROU',
+  Serbia: 'SRB',
+  Slovenia: 'SVN',
+  'North Macedonia': 'MKD',
+  Slovakia: 'SVK',
+  Luxembourg: 'LUX',
 };
 
 export const ALL_GAME_ISOS = Object.values(COUNTRY_TO_ISO3);
@@ -34,6 +46,18 @@ export const COUNTRY_COLORS: Record<string, { fill: string; station: string; bor
   Poland:           { fill: '#d946ef', station: '#e879f9', border: '#d946ef' },
   Hungary:          { fill: '#84cc16', station: '#a3e635', border: '#84cc16' },
   Denmark:          { fill: '#14b8a6', station: '#2dd4bf', border: '#14b8a6' },
+  Portugal:         { fill: '#0d9488', station: '#2dd4bf', border: '#0d9488' },
+  Sweden:           { fill: '#2563eb', station: '#60a5fa', border: '#2563eb' },
+  Norway:           { fill: '#7c3aed', station: '#a78bfa', border: '#7c3aed' },
+  Bulgaria:         { fill: '#b45309', station: '#d97706', border: '#b45309' },
+  Croatia:          { fill: '#dc2626', station: '#f87171', border: '#dc2626' },
+  Greece:           { fill: '#0284c7', station: '#38bdf8', border: '#0284c7' },
+  Romania:          { fill: '#ca8a04', station: '#facc15', border: '#ca8a04' },
+  Serbia:           { fill: '#9333ea', station: '#c084fc', border: '#9333ea' },
+  Slovenia:         { fill: '#059669', station: '#34d399', border: '#059669' },
+  'North Macedonia': { fill: '#e11d48', station: '#fb7185', border: '#e11d48' },
+  Slovakia:         { fill: '#4f46e5', station: '#818cf8', border: '#4f46e5' },
+  Luxembourg:       { fill: '#0891b2', station: '#22d3ee', border: '#0891b2' },
 };
 
 /** Train type colors (legacy, used for fallback) */
@@ -58,6 +82,18 @@ export const RAILWAY_COLORS: Record<string, { train: string; engine: string }> =
   Poland:           { train: '#E06000', engine: '#FF8833' },
   Hungary:          { train: '#7CB342', engine: '#A5D46A' },
   Denmark:          { train: '#8B1A30', engine: '#B83D55' },
+  Portugal:         { train: '#006847', engine: '#33996A' },
+  Sweden:           { train: '#003F8C', engine: '#3370B8' },
+  Norway:           { train: '#BA0C2F', engine: '#D44060' },
+  Bulgaria:         { train: '#00966E', engine: '#33B890' },
+  Croatia:          { train: '#003DA5', engine: '#336BC4' },
+  Greece:           { train: '#0050A0', engine: '#3378C0' },
+  Romania:          { train: '#002B7F', engine: '#335CA5' },
+  Serbia:           { train: '#6C1D45', engine: '#964D70' },
+  Slovenia:         { train: '#005DA6', engine: '#3383C0' },
+  'North Macedonia': { train: '#CE2028', engine: '#DE5558' },
+  Slovakia:         { train: '#0B4EA2', engine: '#3B78C0' },
+  Luxembourg:       { train: '#00A1DE', engine: '#33C0EB' },
 };
 
 /** Mapbox data-driven expression: station dot color by country property */

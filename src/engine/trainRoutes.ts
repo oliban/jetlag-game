@@ -125,6 +125,12 @@ function assignOperator(
     if (countrySet.has('France') && countrySet.has('Netherlands')) return 'Thalys';
     if (countrySet.has('France') && countrySet.has('Switzerland')) return 'TGV Lyria';
     if (countrySet.has('France') && countrySet.has('Spain')) return 'Renfe-SNCF';
+    if (countrySet.has('Portugal') && countrySet.has('Spain')) return 'Renfe-CP';
+    if (countrySet.has('Sweden') && countrySet.has('Norway')) return 'SJ';
+    if (countrySet.has('Sweden') && countrySet.has('Denmark')) return 'Oresundstag';
+    if (countrySet.has('Serbia') && countrySet.has('Hungary')) return 'MÁV';
+    if ((countrySet.has('Slovenia') || countrySet.has('Croatia')) && countrySet.has('Austria')) return 'ÖBB';
+    if (countrySet.has('Bulgaria') && countrySet.has('Romania')) return 'CFR';
     if (countrySet.has('Austria') || countrySet.has('Hungary') || countrySet.has('Czech Republic')) return 'ÖBB';
   }
 
@@ -147,6 +153,18 @@ function assignOperator(
     'Poland':         { express: 'PKP',          regional: 'PKP',          local: 'PKP Regio' },
     'Hungary':        { express: 'MÁV',          regional: 'MÁV',          local: 'MÁV' },
     'Denmark':        { express: 'DSB',          regional: 'DSB',          local: 'DSB' },
+    'Portugal':       { express: 'CP',           regional: 'CP Regional',  local: 'CP Urbanos' },
+    'Sweden':         { express: 'SJ',           regional: 'SJ Regional',  local: 'SL' },
+    'Norway':         { express: 'Vy',           regional: 'Vy',           local: 'Vy' },
+    'Bulgaria':       { express: 'BDZ',          regional: 'BDZ',          local: 'BDZ' },
+    'Croatia':        { express: 'HZ',           regional: 'HZ',           local: 'HZ' },
+    'Greece':         { express: 'Hellenic Train', regional: 'Hellenic Train', local: 'Proastiakos' },
+    'Romania':        { express: 'CFR',          regional: 'CFR',          local: 'CFR Regio' },
+    'Serbia':         { express: 'SZ',           regional: 'SZ',           local: 'BG Voz' },
+    'Slovenia':       { express: 'SZ',           regional: 'SZ',           local: 'SZ' },
+    'North Macedonia': { express: 'MZ',          regional: 'MZ',           local: 'MZ' },
+    'Slovakia':       { express: 'ZSSK',         regional: 'ZSSK',         local: 'ZSSK' },
+    'Luxembourg':     { express: 'CFL',          regional: 'CFL',          local: 'CFL' },
   };
 
   return ops[majority]?.[trainType] ?? 'EuroRail';
