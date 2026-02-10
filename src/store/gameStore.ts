@@ -144,14 +144,28 @@ function getSeekerPos(state: { playerStationId: string | null; playerTransit: Tr
     return playerStationId;
   }
 
+  // Accident stalled — player is stuck at departure station
+  if (playerTransit.accidentStalled) {
+    return playerTransit.fromStationId;
+  }
+
   const stations = getStations();
   const from = stations[playerTransit.fromStationId];
   const to = stations[playerTransit.toStationId];
   if (!from || !to) return playerStationId;
 
+  // Account for delay: effective departure is segmentDepartureTime + delayMinutes
+  const delay = playerTransit.delayMinutes ?? 0;
+  const effectiveDeparture = playerTransit.segmentDepartureTime + delay;
+
+  // Train hasn't actually departed yet (still delayed at station)
+  if (clock.gameMinutes < effectiveDeparture) {
+    return playerTransit.fromStationId;
+  }
+
   const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
   const segDuration = segEnd - playerTransit.segmentDepartureTime;
-  const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+  const elapsed = clock.gameMinutes - effectiveDeparture;
   const progress = segDuration > 0 ? Math.min(1, elapsed / segDuration) : 0;
 
   return {

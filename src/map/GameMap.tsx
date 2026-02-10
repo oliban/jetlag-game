@@ -415,19 +415,38 @@ export default function GameMap() {
     const clockNow = useGameStore.getState().clock.gameMinutes;
     let markerPos: [number, number] = [station.lng, station.lat];
     if (transitState && clockNow >= transitState.departureTime) {
-      const trainPos = findTransitTrainPosition(transitState, clockNow);
-      if (trainPos) {
-        markerPos = trainPos;
+      const stMap = getStations();
+      const fromSt = stMap[transitState.fromStationId];
+      const toSt = stMap[transitState.toStationId];
+
+      // Accident-stalled: keep at departure station
+      if (transitState.accidentStalled && fromSt) {
+        markerPos = [fromSt.lng, fromSt.lat];
       } else {
-        const stationMap = getStations();
-        const from = stationMap[transitState.fromStationId];
-        const to = stationMap[transitState.toStationId];
-        if (from && to) {
+        const delay = transitState.delayMinutes ?? 0;
+        const effectiveDep = transitState.segmentDepartureTime + delay;
+
+        if (delay > 0 && clockNow < effectiveDep && fromSt) {
+          // Still delayed at station
+          markerPos = [fromSt.lng, fromSt.lat];
+        } else if (delay === 0) {
+          const trainPos = findTransitTrainPosition(transitState, clockNow);
+          if (trainPos) {
+            markerPos = trainPos;
+          } else if (fromSt && toSt) {
+            const segEnd = transitState.nextArrivalTime ?? transitState.arrivalTime;
+            const segDuration = segEnd - transitState.segmentDepartureTime;
+            const elapsed = clockNow - transitState.segmentDepartureTime;
+            const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+            markerPos = [fromSt.lng + (toSt.lng - fromSt.lng) * t, fromSt.lat + (toSt.lat - fromSt.lat) * t];
+          }
+        } else if (fromSt && toSt) {
+          // Delayed but departed: delay-aware interpolation
           const segEnd = transitState.nextArrivalTime ?? transitState.arrivalTime;
           const segDuration = segEnd - transitState.segmentDepartureTime;
-          const elapsed = clockNow - transitState.segmentDepartureTime;
+          const elapsed = clockNow - effectiveDep;
           const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
-          markerPos = [from.lng + (to.lng - from.lng) * t, from.lat + (to.lat - from.lat) * t];
+          markerPos = [fromSt.lng + (toSt.lng - fromSt.lng) * t, fromSt.lat + (toSt.lat - fromSt.lat) * t];
         }
       }
     }
@@ -460,23 +479,44 @@ export default function GameMap() {
     if (!playerTransit || !playerMarkerRef.current) return;
     if (clock.gameMinutes < playerTransit.departureTime) return; // not departed yet
 
-    const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
-    if (pos) {
-      playerMarkerRef.current.setLngLat(pos);
-    } else {
-      // Fallback: interpolate current segment (from → to) using segmentDepartureTime
-      const stationMap = getStations();
-      const from = stationMap[playerTransit.fromStationId];
-      const to = stationMap[playerTransit.toStationId];
-      if (from && to) {
-        const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
-        const segDuration = segEnd - playerTransit.segmentDepartureTime;
-        const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
-        const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
-        const lng = from.lng + (to.lng - from.lng) * t;
-        const lat = from.lat + (to.lat - from.lat) * t;
-        playerMarkerRef.current.setLngLat([lng, lat]);
+    const stationMap = getStations();
+    const from = stationMap[playerTransit.fromStationId];
+    const to = stationMap[playerTransit.toStationId];
+
+    // Accident-stalled: keep at departure station
+    if (playerTransit.accidentStalled && from) {
+      playerMarkerRef.current.setLngLat([from.lng, from.lat]);
+      return;
+    }
+
+    // Account for delay
+    const delay = playerTransit.delayMinutes ?? 0;
+    const effectiveDeparture = playerTransit.segmentDepartureTime + delay;
+
+    // Train hasn't actually departed yet (still delayed at station)
+    if (delay > 0 && clock.gameMinutes < effectiveDeparture && from) {
+      playerMarkerRef.current.setLngLat([from.lng, from.lat]);
+      return;
+    }
+
+    // Try matching to an active NPC train (only if no delay, since NPC trains don't know about delays)
+    if (delay === 0) {
+      const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
+      if (pos) {
+        playerMarkerRef.current.setLngLat(pos);
+        return;
       }
+    }
+
+    // Fallback: delay-aware interpolation
+    if (from && to) {
+      const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+      const segDuration = segEnd - playerTransit.segmentDepartureTime;
+      const elapsed = clock.gameMinutes - effectiveDeparture;
+      const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+      const lng = from.lng + (to.lng - from.lng) * t;
+      const lat = from.lat + (to.lat - from.lat) * t;
+      playerMarkerRef.current.setLngLat([lng, lat]);
     }
   }, [playerTransit, clock.gameMinutes]);
 
@@ -506,16 +546,32 @@ export default function GameMap() {
     let center: [number, number] = [station.lng, station.lat];
 
     if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) {
-      const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
-      if (pos) {
-        center = pos;
+      const from = stationMap[playerTransit.fromStationId];
+      const to = stationMap[playerTransit.toStationId];
+
+      if (playerTransit.accidentStalled && from) {
+        center = [from.lng, from.lat];
       } else {
-        const from = stationMap[playerTransit.fromStationId];
-        const to = stationMap[playerTransit.toStationId];
-        if (from && to) {
+        const delay = playerTransit.delayMinutes ?? 0;
+        const effectiveDep = playerTransit.segmentDepartureTime + delay;
+
+        if (delay > 0 && clock.gameMinutes < effectiveDep && from) {
+          center = [from.lng, from.lat];
+        } else if (delay === 0) {
+          const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
+          if (pos) {
+            center = pos;
+          } else if (from && to) {
+            const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+            const segDuration = segEnd - playerTransit.segmentDepartureTime;
+            const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+            const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+            center = [from.lng + (to.lng - from.lng) * t, from.lat + (to.lat - from.lat) * t];
+          }
+        } else if (from && to) {
           const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
           const segDuration = segEnd - playerTransit.segmentDepartureTime;
-          const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+          const elapsed = clock.gameMinutes - effectiveDep;
           const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
           center = [from.lng + (to.lng - from.lng) * t, from.lat + (to.lat - from.lat) * t];
         }
@@ -621,9 +677,42 @@ export default function GameMap() {
     if (!seekerTransit || !seekerMarkerRef.current) return;
     if (clock.gameMinutes < seekerTransit.departureTime) return;
 
-    const pos = findTransitTrainPosition(seekerTransit, clock.gameMinutes);
-    if (pos) {
-      seekerMarkerRef.current.setLngLat(pos);
+    const stationMap = getStations();
+    const from = stationMap[seekerTransit.fromStationId];
+
+    // Accident-stalled: keep at departure station
+    if (seekerTransit.accidentStalled && from) {
+      seekerMarkerRef.current.setLngLat([from.lng, from.lat]);
+      return;
+    }
+
+    // Delayed: stay at station until actual departure
+    const delay = seekerTransit.delayMinutes ?? 0;
+    const effectiveDep = seekerTransit.segmentDepartureTime + delay;
+    if (delay > 0 && clock.gameMinutes < effectiveDep && from) {
+      seekerMarkerRef.current.setLngLat([from.lng, from.lat]);
+      return;
+    }
+
+    if (delay === 0) {
+      const pos = findTransitTrainPosition(seekerTransit, clock.gameMinutes);
+      if (pos) {
+        seekerMarkerRef.current.setLngLat(pos);
+        return;
+      }
+    }
+
+    // Fallback: delay-aware interpolation
+    const to = stationMap[seekerTransit.toStationId];
+    if (from && to) {
+      const segEnd = seekerTransit.nextArrivalTime ?? seekerTransit.arrivalTime;
+      const segDuration = segEnd - seekerTransit.segmentDepartureTime;
+      const elapsed = clock.gameMinutes - effectiveDep;
+      const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+      seekerMarkerRef.current.setLngLat([
+        from.lng + (to.lng - from.lng) * t,
+        from.lat + (to.lat - from.lat) * t,
+      ]);
     }
   }, [seekerTransit, clock.gameMinutes]);
 
