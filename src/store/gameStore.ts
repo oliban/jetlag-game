@@ -516,7 +516,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
 
       // Multi-stop route: check intermediate arrival (skip if stalled)
-      if (!playerTransit.accidentStalled && playerTransit.nextArrivalTime != null && newClock.gameMinutes >= playerTransit.nextArrivalTime) {
+      // Account for delay: actual arrival = scheduled arrival + delay
+      const playerDelay = playerTransit.delayMinutes ?? 0;
+      if (!playerTransit.accidentStalled && playerTransit.nextArrivalTime != null && newClock.gameMinutes >= playerTransit.nextArrivalTime + playerDelay) {
         // Record travel history for this segment
         const segEntry = {
           fromStationId: playerTransit.fromStationId,
@@ -594,7 +596,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           // No route stations info — clear transit
           playerTransit = null;
         }
-      } else if (!playerTransit.accidentStalled && playerTransit.nextArrivalTime == null && newClock.gameMinutes >= playerTransit.arrivalTime) {
+      } else if (!playerTransit.accidentStalled && playerTransit.nextArrivalTime == null && newClock.gameMinutes >= playerTransit.arrivalTime + playerDelay) {
         // Record travel history for legacy single-hop
         const legacyEntry = {
           fromStationId: playerTransit.fromStationId,
@@ -746,7 +748,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
       }
     }
-    if (seekerTransit && !seekerTransit.accidentStalled && newClock.gameMinutes >= seekerTransit.arrivalTime) {
+    const seekerDelay = seekerTransit?.delayMinutes ?? 0;
+    if (seekerTransit && !seekerTransit.accidentStalled && newClock.gameMinutes >= seekerTransit.arrivalTime + seekerDelay) {
       seekerStationId = seekerTransit.toStationId;
       // Record travel history for route replay
       if (state.playerRole === 'hider') {

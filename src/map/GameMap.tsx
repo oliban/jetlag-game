@@ -566,8 +566,8 @@ export default function GameMap() {
             const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
             const segDuration = segEnd - playerTransit.segmentDepartureTime;
             const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
-            const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
-            center = [from.lng + (to.lng - from.lng) * t, from.lat + (to.lat - from.lat) * t];
+            const tCam = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+            center = [from.lng + (to.lng - from.lng) * tCam, from.lat + (to.lat - from.lat) * tCam];
           }
         } else if (from && to) {
           const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
@@ -826,18 +826,30 @@ export default function GameMap() {
       return;
     }
 
-    // Use interpolated position if in transit
+    // Use interpolated position if in transit (delay-aware)
     let centerLng = station.lng;
     let centerLat = station.lat;
     if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) {
       const from = stationMap[playerTransit.fromStationId];
       const to = stationMap[playerTransit.toStationId];
-      const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
-      const segDuration = segEnd - playerTransit.segmentDepartureTime;
-      const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
-      const progress = segDuration > 0 ? Math.min(1, elapsed / segDuration) : 0;
-      centerLat = from.lat + (to.lat - from.lat) * progress;
-      centerLng = from.lng + (to.lng - from.lng) * progress;
+      if (playerTransit.accidentStalled && from) {
+        centerLng = from.lng;
+        centerLat = from.lat;
+      } else {
+        const radarDelay = playerTransit.delayMinutes ?? 0;
+        const radarEffDep = playerTransit.segmentDepartureTime + radarDelay;
+        if (radarDelay > 0 && clock.gameMinutes < radarEffDep && from) {
+          centerLng = from.lng;
+          centerLat = from.lat;
+        } else if (from && to) {
+          const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+          const segDuration = segEnd - playerTransit.segmentDepartureTime;
+          const elapsed = clock.gameMinutes - radarEffDep;
+          const progress = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+          centerLat = from.lat + (to.lat - from.lat) * progress;
+          centerLng = from.lng + (to.lng - from.lng) * progress;
+        }
+      }
     }
     const radiusKm = hoveredRadarRadius;
     const points = 64;
