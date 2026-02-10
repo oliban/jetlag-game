@@ -34,6 +34,14 @@ export interface TransitState {
   nextArrivalTime?: number;    // arrival at immediate next station
 }
 
+export interface TravelHistoryEntry {
+  fromStationId: string;
+  toStationId: string;
+  departureTime: number;   // game minutes
+  arrivalTime: number;     // game minutes
+  trainType: TrainType;
+}
+
 export type SeekerMode = 'single' | 'consensus';
 
 export type Role = 'hider' | 'seeker';

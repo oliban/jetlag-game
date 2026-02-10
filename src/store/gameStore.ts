@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GamePhase, HidingZone, TransitState, SeekerMode } from '../types/game';
+import type { GamePhase, HidingZone, TransitState, SeekerMode, TravelHistoryEntry } from '../types/game';
 import { canTransition } from '../engine/stateMachine';
 import {
   createGameClock,
@@ -75,6 +75,10 @@ export interface GameStore {
   seekerMode: SeekerMode;
   seekerTurnNumber: number;
   consensusLog: ConsensusLogEntry[];
+
+  // Travel history (for route replay)
+  seekerTravelHistory: TravelHistoryEntry[];
+  seekerStartStationId: string | null;
 
   // AI seeker scheduling
   seekerNextActionTime: number;
@@ -175,6 +179,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   seekerTurnNumber: 0,
   consensusLog: [],
 
+  // Travel history (for route replay)
+  seekerTravelHistory: [],
+  seekerStartStationId: null,
+
   // AI seeker scheduling
   seekerNextActionTime: 0,
   seekerTravelQueue: [],
@@ -260,6 +268,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         seekerNextActionTime: 0,
   seekerTravelQueue: [],
         consensusLog: [],
+        seekerTravelHistory: [],
+        seekerStartStationId: playerStart,
       });
       return;
     }
@@ -283,6 +293,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       seekerTransit: null,
       seekerTurnNumber: 0,
       consensusLog: [],
+      seekerTravelHistory: [],
+      seekerStartStationId: null,
     });
   },
 
@@ -377,10 +389,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let playerTransit = state.playerTransit;
     let playerStationId = state.playerStationId;
     let visitedStations = state.visitedStations;
+    let seekerTravelHistoryFromPlayer = state.seekerTravelHistory;
 
     if (playerTransit) {
       // Multi-stop route: check intermediate arrival
       if (playerTransit.nextArrivalTime != null && newClock.gameMinutes >= playerTransit.nextArrivalTime) {
+        // Record seeker travel history for this segment
+        if (state.playerRole === 'seeker') {
+          seekerTravelHistoryFromPlayer = [...seekerTravelHistoryFromPlayer, {
+            fromStationId: playerTransit.fromStationId,
+            toStationId: playerTransit.toStationId,
+            departureTime: playerTransit.segmentDepartureTime,
+            arrivalTime: playerTransit.nextArrivalTime,
+            trainType: playerTransit.trainType,
+          }];
+        }
         // Arrived at intermediate stop
         playerStationId = playerTransit.toStationId;
         if (state.playerRole === 'seeker' && !visitedStations.has(playerStationId)) {
@@ -440,6 +463,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
           playerTransit = null;
         }
       } else if (playerTransit.nextArrivalTime == null && newClock.gameMinutes >= playerTransit.arrivalTime) {
+        // Record seeker travel history for legacy single-hop
+        if (state.playerRole === 'seeker') {
+          seekerTravelHistoryFromPlayer = [...seekerTravelHistoryFromPlayer, {
+            fromStationId: playerTransit.fromStationId,
+            toStationId: playerTransit.toStationId,
+            departureTime: playerTransit.segmentDepartureTime,
+            arrivalTime: playerTransit.arrivalTime,
+            trainType: playerTransit.trainType,
+          }];
+        }
         // Non-route transit (legacy single-hop): arrival clears transit
         playerStationId = playerTransit.toStationId;
         if (state.playerRole === 'seeker' && !visitedStations.has(playerStationId)) {
@@ -468,8 +501,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let seekerTransit = state.seekerTransit;
     let seekerStationId = state.seekerStationId;
     let seekerTravelQueue = state.seekerTravelQueue;
+    let seekerTravelHistory = state.seekerTravelHistory;
     if (seekerTransit && newClock.gameMinutes >= seekerTransit.arrivalTime) {
       seekerStationId = seekerTransit.toStationId;
+      // Record travel history for route replay
+      if (state.playerRole === 'hider') {
+        seekerTravelHistory = [...seekerTravelHistory, {
+          fromStationId: seekerTransit.fromStationId,
+          toStationId: seekerTransit.toStationId,
+          departureTime: seekerTransit.segmentDepartureTime,
+          arrivalTime: seekerTransit.arrivalTime,
+          trainType: seekerTransit.trainType,
+        }];
+      }
       // Track AI seeker's visited stations too (playerRole === 'hider' means AI is seeking)
       if (state.playerRole === 'hider' && !visitedStations.has(seekerStationId)) {
         visitedStations = new Set(visitedStations);
@@ -492,6 +536,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
+    // Merge travel history: AI seeker history takes precedence when playerRole === 'hider',
+    // player seeker history when playerRole === 'seeker'
+    const mergedTravelHistory = state.playerRole === 'hider' ? seekerTravelHistory : seekerTravelHistoryFromPlayer;
+
     set({
       clock: newClock,
       playerTransit,
@@ -500,6 +548,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       seekerTransit,
       seekerStationId,
       seekerTravelQueue,
+      seekerTravelHistory: mergedTravelHistory,
       queuedRoute,
     });
 
@@ -546,6 +595,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         seekerNextActionTime: 0,
   seekerTravelQueue: [],
         consensusLog: [],
+        seekerTravelHistory: [],
+        seekerStartStationId: null,
       });
     } else {
       set({ phase: to });
@@ -634,6 +685,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       seekerNextActionTime: 0,
   seekerTravelQueue: [],
       consensusLog: [],
+      seekerTravelHistory: [],
+      seekerStartStationId: bestStation,
     });
   },
 

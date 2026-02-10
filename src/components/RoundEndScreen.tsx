@@ -1,6 +1,7 @@
 import { useGameStore } from '../store/gameStore';
 import { formatGameTime } from '../engine/gameLoop';
 import { getStations } from '../data/graph';
+import ReplayMiniMap from './ReplayMiniMap';
 
 export default function RoundEndScreen() {
   const phase = useGameStore((s) => s.phase);
@@ -10,6 +11,8 @@ export default function RoundEndScreen() {
   const transitionPhase = useGameStore((s) => s.transitionPhase);
   const playerRole = useGameStore((s) => s.playerRole);
   const hidingZone = useGameStore((s) => s.hidingZone);
+  const seekerTravelHistory = useGameStore((s) => s.seekerTravelHistory);
+  const seekerStartStationId = useGameStore((s) => s.seekerStartStationId);
 
   if (phase !== 'round_end' || !gameResult) return null;
 
@@ -20,7 +23,7 @@ export default function RoundEndScreen() {
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[#0a1a3a] border border-[#1a3a6a]/60 rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl text-center animate-scale-in">
+      <div className="bg-[#0a1a3a] border border-[#1a3a6a]/60 rounded-xl p-8 max-w-2xl w-full mx-4 shadow-2xl text-center animate-scale-in">
         {/* Result icon */}
         <div className={`rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center ${playerWon ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
           <span className={`text-5xl ${seekerWon ? 'animate-bounce' : ''}`}>
@@ -78,6 +81,20 @@ export default function RoundEndScreen() {
             <p className="text-xs text-gray-500 mt-1">Role</p>
           </div>
         </div>
+
+        {/* Route Replay */}
+        {seekerTravelHistory.length > 0 && seekerStartStationId && hidingZone && (
+          <div className="mb-6">
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Route Replay</p>
+            <ReplayMiniMap
+              history={seekerTravelHistory}
+              hiderStationId={hidingZone.stationId}
+              seekerStartStationId={seekerStartStationId}
+              totalGameMinutes={gameMinutes}
+              gameResult={gameResult}
+            />
+          </div>
+        )}
 
         {/* Play again */}
         <button
