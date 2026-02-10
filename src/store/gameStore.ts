@@ -495,9 +495,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const pFrom = playerTransit.fromStationId;
         const pTo = playerTransit.toStationId;
         if (!isSegmentBlocked(blockedSegments, pFrom, pTo)) {
-          // Segment unblocked — check if own train also has no accident before clearing
-          // (own-train accident is checked separately below)
-          playerTransit = { ...playerTransit, accidentStalled: undefined };
+          if (!playerTransit.routeId) {
+            // Legacy single-hop: no own-accident tracking, so this IS the final unstall
+            const stallStart = playerTransit.stalledAtGameMinutes ?? newClock.gameMinutes;
+            const stallDuration = newClock.gameMinutes - stallStart;
+            playerTransit = {
+              ...playerTransit,
+              accidentStalled: undefined,
+              stalledAtGameMinutes: undefined,
+              segmentDepartureTime: playerTransit.segmentDepartureTime + stallDuration,
+              arrivalTime: playerTransit.arrivalTime + stallDuration,
+              ...(playerTransit.nextArrivalTime != null ? { nextArrivalTime: playerTransit.nextArrivalTime + stallDuration } : {}),
+            };
+          } else {
+            // Segment unblocked — clear accidentStalled but keep stalledAtGameMinutes.
+            // The own-accident section below will either re-stall or do the final time-shift.
+            playerTransit = { ...playerTransit, accidentStalled: undefined };
+          }
         }
       }
 
@@ -644,7 +658,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               phase = 'round_end';
             } else if (!playerTransit.accidentStalled) {
               logger.warn('gameStore', `Player's train ${pTrainId} involved in ACCIDENT — stalled until ${Math.round(pAccident.resumeAt)}min`);
-              playerTransit = { ...playerTransit, accidentStalled: true };
+              playerTransit = { ...playerTransit, accidentStalled: true, stalledAtGameMinutes: playerTransit.stalledAtGameMinutes ?? newClock.gameMinutes };
             }
           } else {
             // Check delay
@@ -658,10 +672,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
               logger.info('gameStore', `Player's train delay resolved (was +${playerTransit.delayMinutes}min)`);
               playerTransit = { ...playerTransit, delayMinutes: undefined };
             }
-            // Clear own-accident stall (segment-block stalls are handled at the top)
-            if (playerTransit.accidentStalled && !isSegmentBlocked(blockedSegments, playerTransit.fromStationId, playerTransit.toStationId)) {
+            // Clear stall and time-shift if no longer blocked by own accident or segment block
+            if ((playerTransit.accidentStalled || playerTransit.stalledAtGameMinutes != null) &&
+                !isSegmentBlocked(blockedSegments, playerTransit.fromStationId, playerTransit.toStationId)) {
               logger.info('gameStore', `Player's train accident cleared, resuming travel`);
-              playerTransit = { ...playerTransit, accidentStalled: undefined };
+              const stallStart = playerTransit.stalledAtGameMinutes ?? newClock.gameMinutes;
+              const stallDuration = newClock.gameMinutes - stallStart;
+              playerTransit = {
+                ...playerTransit,
+                accidentStalled: undefined,
+                stalledAtGameMinutes: undefined,
+                segmentDepartureTime: playerTransit.segmentDepartureTime + stallDuration,
+                arrivalTime: playerTransit.arrivalTime + stallDuration,
+                ...(playerTransit.nextArrivalTime != null ? { nextArrivalTime: playerTransit.nextArrivalTime + stallDuration } : {}),
+              };
             }
 
             // Check mid-segment blocking by another train's accident
@@ -670,7 +694,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               const pTo = playerTransit.toStationId;
               if (isTrainBlockedOnSegment(blockedSegments, pFrom, pTo, pTrainId)) {
                 logger.info('gameStore', `Player's train blocked on ${pFrom}→${pTo} by accident ahead`);
-                playerTransit = { ...playerTransit, accidentStalled: true };
+                playerTransit = { ...playerTransit, accidentStalled: true, stalledAtGameMinutes: playerTransit.stalledAtGameMinutes ?? newClock.gameMinutes };
               }
             }
           }
@@ -703,7 +727,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const sFrom = seekerTransit.fromStationId;
       const sTo = seekerTransit.toStationId;
       if (!isSegmentBlocked(blockedSegments, sFrom, sTo)) {
-        seekerTransit = { ...seekerTransit, accidentStalled: undefined };
+        if (!seekerTransit.routeId) {
+          // Legacy single-hop: no own-accident tracking, so this IS the final unstall
+          const stallStart = seekerTransit.stalledAtGameMinutes ?? newClock.gameMinutes;
+          const stallDuration = newClock.gameMinutes - stallStart;
+          seekerTransit = {
+            ...seekerTransit,
+            accidentStalled: undefined,
+            stalledAtGameMinutes: undefined,
+            segmentDepartureTime: seekerTransit.segmentDepartureTime + stallDuration,
+            arrivalTime: seekerTransit.arrivalTime + stallDuration,
+            ...(seekerTransit.nextArrivalTime != null ? { nextArrivalTime: seekerTransit.nextArrivalTime + stallDuration } : {}),
+          };
+        } else {
+          // Segment unblocked — clear accidentStalled but keep stalledAtGameMinutes.
+          // The own-accident section below will either re-stall or do the final time-shift.
+          seekerTransit = { ...seekerTransit, accidentStalled: undefined };
+        }
       }
     }
     if (seekerTransit && !seekerTransit.accidentStalled && newClock.gameMinutes >= seekerTransit.arrivalTime) {
@@ -770,7 +810,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               phase = 'round_end';
             } else if (!seekerTransit.accidentStalled) {
               logger.warn('gameStore', `Seeker's train ${sTrainId} involved in ACCIDENT — stalled until ${Math.round(sAccident.resumeAt)}min`);
-              seekerTransit = { ...seekerTransit, accidentStalled: true };
+              seekerTransit = { ...seekerTransit, accidentStalled: true, stalledAtGameMinutes: seekerTransit.stalledAtGameMinutes ?? newClock.gameMinutes };
             }
           } else {
             const sDelay = getTrainDelay(updatedDelays, sTrainId);
@@ -783,10 +823,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
               logger.info('gameStore', `Seeker's train delay resolved (was +${seekerTransit.delayMinutes}min)`);
               seekerTransit = { ...seekerTransit, delayMinutes: undefined };
             }
-            // Clear own-accident stall (segment-block stalls are handled at the top)
-            if (seekerTransit.accidentStalled && !isSegmentBlocked(blockedSegments, seekerTransit.fromStationId, seekerTransit.toStationId)) {
+            // Clear stall and time-shift if no longer blocked by own accident or segment block
+            if ((seekerTransit.accidentStalled || seekerTransit.stalledAtGameMinutes != null) &&
+                !isSegmentBlocked(blockedSegments, seekerTransit.fromStationId, seekerTransit.toStationId)) {
               logger.info('gameStore', `Seeker's train accident cleared, resuming travel`);
-              seekerTransit = { ...seekerTransit, accidentStalled: undefined };
+              const stallStart = seekerTransit.stalledAtGameMinutes ?? newClock.gameMinutes;
+              const stallDuration = newClock.gameMinutes - stallStart;
+              seekerTransit = {
+                ...seekerTransit,
+                accidentStalled: undefined,
+                stalledAtGameMinutes: undefined,
+                segmentDepartureTime: seekerTransit.segmentDepartureTime + stallDuration,
+                arrivalTime: seekerTransit.arrivalTime + stallDuration,
+                ...(seekerTransit.nextArrivalTime != null ? { nextArrivalTime: seekerTransit.nextArrivalTime + stallDuration } : {}),
+              };
             }
 
             // Check mid-segment blocking for seeker
@@ -795,7 +845,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               const sTo = seekerTransit.toStationId;
               if (isTrainBlockedOnSegment(blockedSegments, sFrom, sTo, sTrainId)) {
                 logger.info('gameStore', `Seeker's train blocked on ${sFrom}→${sTo} by accident ahead`);
-                seekerTransit = { ...seekerTransit, accidentStalled: true };
+                seekerTransit = { ...seekerTransit, accidentStalled: true, stalledAtGameMinutes: seekerTransit.stalledAtGameMinutes ?? newClock.gameMinutes };
               }
             }
           }
