@@ -34,6 +34,15 @@ When you travel, you must wait for the next departure, then travel takes time ba
 The get_my_state response includes next departure times and travel durations for each adjacent station.
 Plan your route carefully — waiting for an express train may be faster than taking multiple local trains.
 
+## DISRUPTIONS & WEATHER
+The network experiences dynamic weather and disruptions:
+- **Weather zones** move across Europe, causing delays and rare accidents.
+- **Delays** can escalate unpredictably — the displayed delay may increase over time. Don't trust stable delay values.
+- **Accidents** stop trains completely for extended periods. Fatal accidents are rare but possible.
+- Your \`get_my_state\` response includes \`activeDisruptions\` (delays and accidents) and \`currentWeather\`.
+- When planning routes, check for delays on your intended trains and route around bad weather zones when possible.
+- If your train is in an accident, you're stuck until it resolves.
+
 ## COIN BUDGET
 You have a limited coin budget to spend on questions. Each question category has a different cost:
 - **Radar** questions: 1 coin each

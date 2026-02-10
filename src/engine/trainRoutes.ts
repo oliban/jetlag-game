@@ -1,5 +1,7 @@
 import { getConnections, getStations, buildAdjacencyList } from '../data/graph';
 import type { TrainType } from '../types/game';
+import type { TrainDelay, TrainAccident } from '../types/disruptions';
+import { getBlockedSegments, isSegmentBlocked } from './segmentBlock';
 import { travelDuration, computeDepartureOffset } from './trainSchedule';
 import { computeBearing } from './geo';
 
@@ -56,6 +58,8 @@ export interface RouteDeparture {
   departureTime: number;   // game minutes when train departs this station
   stationIndex: number;    // index in the direction's stop list
   remainingStops: { stationId: string; arrivalMin: number; departureMin: number }[];
+  delayMinutes?: number;
+  status?: 'on-time' | 'delayed' | 'cancelled';
 }
 
 /** Connection distance lookup key (alphabetically sorted) */
@@ -380,6 +384,69 @@ export function getUpcomingDepartures(
 
   departures.sort((a, b) => a.departureTime - b.departureTime);
   return departures.slice(0, count);
+}
+
+/** Get upcoming departures with delay and accident information */
+export function getUpcomingDeparturesWithDelays(
+  stationId: string,
+  gameMinutes: number,
+  count: number,
+  delays: Map<string, TrainDelay>,
+  accidents: Map<string, TrainAccident>,
+): RouteDeparture[] {
+  // Get extra departures since some may be cancelled
+  const departures = getUpcomingDepartures(stationId, gameMinutes, count * 2);
+
+  // Compute blocked segments once
+  const blockedSegments = getBlockedSegments(accidents, gameMinutes);
+
+  const result: RouteDeparture[] = [];
+
+  for (const dep of departures) {
+    // Compute train instance ID
+    const stopTimes = dep.direction === 'forward' ? dep.route.stopTimes : dep.route.reverseStopTimes;
+    const stopDepartureOffset = stopTimes[dep.stationIndex].departureMin;
+    const originDep = dep.departureTime - stopDepartureOffset;
+    const trainInstanceId = `${dep.route.id}:${dep.direction}:${originDep}`;
+
+    // Check for delay
+    const delay = delays.get(trainInstanceId);
+    const delayMinutes = delay && !delay.resolved ? delay.delayMinutes : 0;
+
+    // Check for accident on this train
+    const accident = accidents.get(trainInstanceId);
+    let status: 'on-time' | 'delayed' | 'cancelled' = 'on-time';
+    if (accident && gameMinutes < accident.resumeAt) {
+      status = 'cancelled';
+    } else if (dep.stationIndex < stopTimes.length - 1) {
+      // Check if first segment from this station is blocked by another accident
+      const nextStopId = stopTimes[dep.stationIndex + 1].stationId;
+      if (isSegmentBlocked(blockedSegments, stationId, nextStopId)) {
+        status = 'cancelled';
+      }
+    }
+
+    if (status === 'on-time' && delayMinutes > 0) {
+      status = 'delayed';
+    }
+
+    result.push({
+      ...dep,
+      delayMinutes,
+      status,
+      // Adjust departure time by delay
+      departureTime: dep.departureTime + delayMinutes,
+      remainingStops: dep.remainingStops.map(s => ({
+        ...s,
+        arrivalMin: s.arrivalMin + delayMinutes,
+        departureMin: s.departureMin + delayMinutes,
+      })),
+    });
+
+    if (result.length >= count) break;
+  }
+
+  return result;
 }
 
 /** Collect departures for one direction of a route at a given station */

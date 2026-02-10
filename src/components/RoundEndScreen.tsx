@@ -13,49 +13,67 @@ export default function RoundEndScreen() {
   const hidingZone = useGameStore((s) => s.hidingZone);
   const seekerTravelHistory = useGameStore((s) => s.seekerTravelHistory);
   const seekerStartStationId = useGameStore((s) => s.seekerStartStationId);
+  const playerTravelHistory = useGameStore((s) => s.playerTravelHistory);
+  const playerStartStationId = useGameStore((s) => s.playerStartStationId);
 
   if (phase !== 'round_end' || !gameResult) return null;
 
   const seekerWon = gameResult === 'seeker_wins';
+  const isFatalAccident = gameResult === 'fatal_accident';
+  const isSeekerKilled = gameResult === 'seeker_killed';
   const playerWon =
-    (playerRole === 'hider' && !seekerWon) ||
-    (playerRole === 'seeker' && seekerWon);
+    (playerRole === 'hider' && (gameResult === 'hider_wins' || gameResult === 'seeker_killed')) ||
+    (playerRole === 'seeker' && gameResult === 'seeker_wins');
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
       <div className="bg-[#0a1a3a] border border-[#1a3a6a]/60 rounded-xl p-5 md:p-8 max-w-2xl w-full mx-4 shadow-2xl text-center animate-scale-in max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Result icon */}
-        <div className={`rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center ${playerWon ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
+        <div className={`rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center ${
+          isFatalAccident ? 'bg-red-500/10' :
+          isSeekerKilled ? 'bg-emerald-500/10' :
+          playerWon ? 'bg-emerald-500/10' : 'bg-rose-500/10'
+        }`}>
           <span className={`text-5xl ${seekerWon ? 'animate-bounce' : ''}`}>
-            {seekerWon ? '\uD83C\uDFAF' : '\uD83D\uDEE1\uFE0F'}
+            {seekerWon ? '\uD83C\uDFAF' : isFatalAccident ? '\uD83D\uDCA5' : isSeekerKilled ? '\uD83C\uDF89' : '\uD83D\uDEE1\uFE0F'}
           </span>
         </div>
 
         {/* Title */}
         <h2
           className={`text-xl md:text-3xl font-bold mb-2 ${
+            isFatalAccident ? 'text-red-400' :
+            isSeekerKilled ? 'text-emerald-400' :
             playerWon ? 'text-emerald-400' : 'text-rose-400'
           }`}
         >
-          {seekerWon
+          {isFatalAccident ? 'Fatal Accident' :
+           isSeekerKilled ? 'Seeker Crashed!' :
+           seekerWon
             ? (playerRole === 'seeker' ? 'You found the hider!' : 'The seeker found you!')
             : (playerRole === 'hider' ? 'You stayed hidden!' : 'The hider escaped!')}
         </h2>
 
-        {/* Station */}
-        {seekerWon && hidingZone && (
-          <p className="text-lg mb-1">
-            <span className="text-gray-400">at </span>
-            <span className="text-white font-medium">{getStations()[hidingZone.stationId]?.name ?? hidingZone.stationId}</span>
-          </p>
+        {/* Subtitle */}
+        {isFatalAccident ? (
+          <p className="text-gray-400 mb-6">Your train was involved in a fatal accident.</p>
+        ) : isSeekerKilled ? (
+          <p className="text-gray-400 mb-6">The seeker's train was involved in a fatal accident. You win!</p>
+        ) : (
+          <>
+            {seekerWon && hidingZone && (
+              <p className="text-lg mb-1">
+                <span className="text-gray-400">at </span>
+                <span className="text-white font-medium">{getStations()[hidingZone.stationId]?.name ?? hidingZone.stationId}</span>
+              </p>
+            )}
+            <p className="text-gray-400 mb-6">
+              {seekerWon
+                ? `Found in ${formatGameTime(gameMinutes)}`
+                : `Survived for ${formatGameTime(gameMinutes)}`}
+            </p>
+          </>
         )}
-
-        {/* Time */}
-        <p className="text-gray-400 mb-6">
-          {seekerWon
-            ? `Found in ${formatGameTime(gameMinutes)}`
-            : `Survived for ${formatGameTime(gameMinutes)}`}
-        </p>
 
         {/* Divider */}
         <div className={`h-px w-16 mx-auto mb-6 ${playerWon ? 'bg-emerald-500/40' : 'bg-rose-500/40'}`} />
@@ -83,7 +101,7 @@ export default function RoundEndScreen() {
         </div>
 
         {/* Route Replay */}
-        {seekerTravelHistory.length > 0 && seekerStartStationId && hidingZone && (
+        {(seekerTravelHistory.length > 0 || playerTravelHistory.length > 0) && hidingZone && (
           <div className="mb-6">
             <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Route Replay</p>
             <ReplayMiniMap
@@ -92,6 +110,9 @@ export default function RoundEndScreen() {
               seekerStartStationId={seekerStartStationId}
               totalGameMinutes={gameMinutes}
               gameResult={gameResult}
+              playerHistory={playerTravelHistory}
+              playerStartStationId={playerStartStationId}
+              playerRole={playerRole}
             />
           </div>
         )}

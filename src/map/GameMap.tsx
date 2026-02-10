@@ -6,6 +6,8 @@ import { useGameStore } from '../store/gameStore';
 import type { Station } from '../types/game';
 import { renderConstraints } from './constraintRenderer';
 import { initTrainLayer, updateTrainPositions, initTrainHover, initTrainClick } from './trainRenderer';
+import { initWeatherLayers, updateWeatherZones } from './weatherLayer';
+import { initSmokeLayers, updateSmokePositions } from './smokeRenderer';
 import { logger } from '../engine/logger';
 import { classifyConnection } from '../engine/trainSchedule';
 import { findTransitTrainPosition } from '../engine/transitPosition';
@@ -40,6 +42,9 @@ export default function GameMap() {
   const clock = useGameStore((s) => s.clock);
   const hoveredRadarRadius = useGameStore((s) => s.hoveredRadarRadius);
   const visitedStations = useGameStore((s) => s.visitedStations);
+  const weatherZones = useGameStore((s) => s.weatherZones);
+  const delays = useGameStore((s) => s.delays);
+  const accidents = useGameStore((s) => s.accidents);
 
   const stations = useMemo(() => getStationList(), []);
   const connections = useMemo(() => getConnections(), []);
@@ -280,8 +285,14 @@ export default function GameMap() {
         },
       }, 'station-dots');
 
+      // Weather overlay (below connection-lines)
+      initWeatherLayers(map);
+
       // Train visualization layer (above connection-lines, below station-dots)
       initTrainLayer(map);
+
+      // Accident smoke layer (above trains)
+      initSmokeLayers(map);
       const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
       if (!isTouchDevice) {
@@ -436,6 +447,13 @@ export default function GameMap() {
       });
     }
   }, [playerStationId, playerRole, mapLoaded]);
+
+  // Reset initial pan flag when returning to setup so next game pans to player
+  useEffect(() => {
+    if (phase === 'setup') {
+      hasInitialPan.current = false;
+    }
+  }, [phase]);
 
   // Attach player marker to active train during transit
   useEffect(() => {
@@ -764,8 +782,10 @@ export default function GameMap() {
     if (now - lastTrainUpdateRef.current < 100) return;
     lastTrainUpdateRef.current = now;
 
-    updateTrainPositions(map, clock.gameMinutes);
-  }, [clock.gameMinutes, mapLoaded, phase]);
+    updateTrainPositions(map, clock.gameMinutes, delays, accidents);
+    updateWeatherZones(map, weatherZones);
+    updateSmokePositions(map, accidents, clock.gameMinutes);
+  }, [clock.gameMinutes, mapLoaded, phase, weatherZones, accidents]);
 
   return (
     <div className="relative w-full h-full">

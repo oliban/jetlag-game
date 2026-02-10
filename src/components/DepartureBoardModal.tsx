@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { getStations } from '../data/graph';
-import { getUpcomingDepartures, type RouteDeparture } from '../engine/trainRoutes';
+import { getUpcomingDeparturesWithDelays, type RouteDeparture } from '../engine/trainRoutes';
 import { formatGameTime } from '../engine/gameLoop';
 
 const TRAIN_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -49,6 +49,8 @@ export default function DepartureBoardModal() {
   const travelViaRoute = useGameStore((s) => s.travelViaRoute);
   const seekerStationId = useGameStore((s) => s.seekerStationId);
   const seekerTransit = useGameStore((s) => s.seekerTransit);
+  const delays = useGameStore((s) => s.delays);
+  const accidents = useGameStore((s) => s.accidents);
 
   // Expand/collapse state for departure rows
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -131,8 +133,8 @@ export default function DepartureBoardModal() {
 
   const boardStation = stations[boardStationId];
 
-  // Get route-based departures
-  const departures = getUpcomingDepartures(boardStationId, boardTime, 10);
+  // Get route-based departures with delay/accident info
+  const departures = getUpcomingDeparturesWithDelays(boardStationId, boardTime, 10, delays, accidents);
 
   if (departures.length === 0) return null;
 
@@ -174,13 +176,13 @@ export default function DepartureBoardModal() {
         </div>
 
         {/* Column headers */}
-        <div className="grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.8rem_2.4rem] px-3 py-1 text-[10px] text-gray-500 uppercase tracking-wide border-b border-[#0c2a52]">
+        <div className="grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.8rem_3.4rem] px-3 py-1 text-[10px] text-gray-500 uppercase tracking-wide border-b border-[#0c2a52]">
           <span>Time</span>
           <span>Route</span>
           <span className="text-center">Type</span>
           <span className="text-right">Spd</span>
           <span className="text-right">Dur</span>
-          <span className="text-right">In</span>
+          <span className="text-right">Status</span>
         </div>
 
         {/* Departure rows */}
@@ -193,12 +195,14 @@ export default function DepartureBoardModal() {
           const totalDur = dep.remainingStops.length > 0
             ? Math.round(dep.remainingStops[dep.remainingStops.length - 1].arrivalMin - dep.departureTime)
             : 0;
+          const isCancelled = dep.status === 'cancelled';
+          const isDelayed = dep.status === 'delayed';
 
           // Block departures that arrive after hiding time limit
           const lastArrival = dep.remainingStops.length > 0
             ? dep.remainingStops[dep.remainingStops.length - 1].arrivalMin
             : dep.departureTime;
-          const blocked = playerRole === 'hider' && phase === 'hiding' && lastArrival > HIDING_TIME_LIMIT;
+          const blocked = isCancelled || (playerRole === 'hider' && phase === 'hiding' && lastArrival > HIDING_TIME_LIMIT);
           // Check if this is the currently selected departure
           const isSelected = waitingForDeparture && activeTransit?.routeId === dep.route.id
             && activeTransit?.departureTime === dep.departureTime;
@@ -213,9 +217,9 @@ export default function DepartureBoardModal() {
                 onClick={canExpand ? () => {
                   setExpandedKey(isExpanded ? null : rowKey);
                 } : undefined}
-                className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.8rem_2.4rem] px-3 py-1 border-b border-[#0a1a3a] items-center ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${canExpand ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
+                className={`grid grid-cols-[3.2rem_1fr_2.6rem_2.4rem_2.8rem_3.4rem] px-3 py-1 border-b border-[#0a1a3a] items-center ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${canExpand ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
               >
-                <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : 'text-white'}`}>
+                <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : isDelayed ? 'text-orange-400' : 'text-white'}`}>
                   {formatGameTime(dep.departureTime)}
                 </span>
                 <span className={`text-xs truncate pr-1 ${blocked ? 'text-gray-600 line-through' : 'text-[#ffbf40]'}`} title={routeDesc}>
@@ -230,8 +234,8 @@ export default function DepartureBoardModal() {
                 <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600 line-through' : 'text-gray-500'}`}>
                   {totalDur}m
                 </span>
-                <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600' : isDwelling ? 'text-green-400 font-bold' : imminent ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
-                  {isDwelling ? 'BRD' : minsUntil === 0 ? 'NOW' : `${minsUntil}m`}
+                <span className={`text-[10px] tabular-nums text-right font-bold ${isCancelled ? 'text-red-400' : isDelayed ? 'text-orange-400' : isDwelling ? 'text-green-400' : imminent ? 'text-red-400' : 'text-green-500/70'}`}>
+                  {isCancelled ? 'CANC' : isDelayed ? `+${dep.delayMinutes}m` : isDwelling ? 'BRD' : minsUntil === 0 ? 'NOW' : formatGameTime(dep.departureTime)}
                 </span>
               </div>
 
@@ -292,6 +296,8 @@ export function DepartureBoardMobile() {
   const travelViaRoute = useGameStore((s) => s.travelViaRoute);
   const seekerStationId = useGameStore((s) => s.seekerStationId);
   const seekerTransit = useGameStore((s) => s.seekerTransit);
+  const delays = useGameStore((s) => s.delays);
+  const accidents = useGameStore((s) => s.accidents);
 
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
@@ -328,7 +334,7 @@ export function DepartureBoardMobile() {
   }
 
   const boardStation = stations[boardStationId];
-  const departures = getUpcomingDepartures(boardStationId, boardTime, 10);
+  const departures = getUpcomingDeparturesWithDelays(boardStationId, boardTime, 10, delays, accidents);
 
   if (departures.length === 0) return (
     <div className="flex items-center justify-center py-8">
@@ -355,11 +361,11 @@ export function DepartureBoardMobile() {
         </span>
       </div>
       {/* Column headers - 4 cols */}
-      <div className="grid grid-cols-[3.5rem_1fr_3rem_3rem] px-3 py-1 text-[10px] text-gray-500 uppercase tracking-wide border-b border-[#0c2a52]">
+      <div className="grid grid-cols-[3.5rem_1fr_3rem_3.4rem] px-3 py-1 text-[10px] text-gray-500 uppercase tracking-wide border-b border-[#0c2a52]">
         <span>Time</span>
         <span>Route</span>
         <span className="text-right">Dur</span>
-        <span className="text-right">In</span>
+        <span className="text-right">Status</span>
       </div>
 
       {/* Departure rows */}
@@ -371,11 +377,13 @@ export function DepartureBoardMobile() {
         const totalDur = dep.remainingStops.length > 0
           ? Math.round(dep.remainingStops[dep.remainingStops.length - 1].arrivalMin - dep.departureTime)
           : 0;
+        const isCancelled = dep.status === 'cancelled';
+        const isDelayed = dep.status === 'delayed';
 
         const lastArrival = dep.remainingStops.length > 0
           ? dep.remainingStops[dep.remainingStops.length - 1].arrivalMin
           : dep.departureTime;
-        const blocked = playerRole === 'hider' && phase === 'hiding' && lastArrival > HIDING_TIME_LIMIT;
+        const blocked = isCancelled || (playerRole === 'hider' && phase === 'hiding' && lastArrival > HIDING_TIME_LIMIT);
         const isSelected = waitingForDeparture && activeTransit?.routeId === dep.route.id
           && activeTransit?.departureTime === dep.departureTime;
 
@@ -389,9 +397,12 @@ export function DepartureBoardMobile() {
               onClick={canExpand ? () => {
                 setExpandedKey(isExpanded ? null : rowKey);
               } : undefined}
-              className={`grid grid-cols-[3.5rem_1fr_3rem_3rem] px-3 py-2 border-b border-[#0a1a3a] items-center text-sm ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${canExpand ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
+              className={`grid grid-cols-[3.5rem_1fr_3rem_3.4rem] px-3 py-2 border-b border-[#0a1a3a] items-center text-sm ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${canExpand ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
             >
-              <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : 'text-white'}`}>
+              <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : isDelayed ? 'text-orange-400' : 'text-white'}`}>
+                {isDelayed && !blocked && (
+                  <span className="text-gray-600 line-through mr-1">{formatGameTime(dep.departureTime - (dep.delayMinutes ?? 0))}</span>
+                )}
                 {formatGameTime(dep.departureTime)}
               </span>
               <span className={`text-xs truncate pr-1 ${blocked ? 'text-gray-600 line-through' : 'text-[#ffbf40]'}`} title={routeDesc}>
@@ -400,8 +411,8 @@ export function DepartureBoardMobile() {
               <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600 line-through' : 'text-gray-500'}`}>
                 {totalDur}m
               </span>
-              <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600' : isDwelling ? 'text-green-400 font-bold' : imminent ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
-                {isDwelling ? 'BRD' : minsUntil === 0 ? 'NOW' : `${minsUntil}m`}
+              <span className={`text-[10px] tabular-nums text-right font-bold ${isCancelled ? 'text-red-400' : isDelayed ? 'text-orange-400' : isDwelling ? 'text-green-400' : imminent ? 'text-red-400' : 'text-green-500/70'}`}>
+                {isCancelled ? 'CANC' : isDelayed ? `+${dep.delayMinutes}m` : isDwelling ? 'BRD' : minsUntil === 0 ? 'NOW' : formatGameTime(dep.departureTime)}
               </span>
             </div>
 

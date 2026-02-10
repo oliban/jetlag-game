@@ -32,6 +32,8 @@ export interface TransitState {
   routeStations?: string[];    // full route stations in travel direction
   destinationStationId?: string; // player's chosen stop
   nextArrivalTime?: number;    // arrival at immediate next station
+  delayMinutes?: number;        // current delay on this train (from disruptions)
+  accidentStalled?: boolean;    // train stopped due to accident
 }
 
 export interface TravelHistoryEntry {

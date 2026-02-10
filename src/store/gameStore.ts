@@ -29,6 +29,11 @@ import { getTravelInfo } from '../engine/trainSchedule';
 import { getRoutes, getUpcomingDepartures } from '../engine/trainRoutes';
 import type { ProviderConfig } from '../client/providerAdapter';
 import type { TravelRouteEntry } from '../client/aiClient';
+import type { WeatherZone, TrainDelay, TrainAccident } from '../types/disruptions';
+import { tickWeather, createInitialWeatherZones } from '../engine/weather';
+import { tickDisruptions, getTrainDelay, isTrainAccident } from '../engine/disruptions';
+import { getActiveTrains } from '../engine/activeTrains';
+import { getBlockedSegments, isSegmentBlocked, isTrainBlockedOnSegment } from '../engine/segmentBlock';
 
 export interface QuestionEntry {
   question: string;
@@ -62,7 +67,7 @@ export interface GameStore {
   constraints: Constraint[];
   questionsAsked: QuestionEntry[];
   cooldownTracker: CooldownTracker | null;
-  gameResult: 'seeker_wins' | 'hider_wins' | null;
+  gameResult: 'seeker_wins' | 'hider_wins' | 'fatal_accident' | 'seeker_killed' | null;
   debugLog: DebugLogEntry[];
   hasAnthropicProvider: boolean;
   hasOpenaiProvider: boolean;
@@ -79,10 +84,17 @@ export interface GameStore {
   // Travel history (for route replay)
   seekerTravelHistory: TravelHistoryEntry[];
   seekerStartStationId: string | null;
+  playerTravelHistory: TravelHistoryEntry[];
+  playerStartStationId: string | null;
 
   // AI seeker scheduling
   seekerNextActionTime: number;
   seekerTravelQueue: TravelRouteEntry[];
+
+  // Disruptions
+  weatherZones: WeatherZone[];
+  delays: Map<string, TrainDelay>;
+  accidents: Map<string, TrainAccident>;
 
   // Queued connection (player clicked a departure while in transit)
   queuedRoute: { routeId: string; destinationStationId: string; departureTime: number } | null;
@@ -106,7 +118,7 @@ export interface GameStore {
   addQuestion: (entry: QuestionEntry) => void;
   addDebugLog: (entry: DebugLogEntry) => void;
   setSeekerStation: (stationId: string) => void;
-  setGameResult: (result: 'seeker_wins' | 'hider_wins') => void;
+  setGameResult: (result: 'seeker_wins' | 'hider_wins' | 'fatal_accident' | 'seeker_killed') => void;
   setIsAISeeking: (seeking: boolean) => void;
   setCooldownTracker: (tracker: CooldownTracker) => void;
   startSeeking: () => void;
@@ -184,10 +196,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Travel history (for route replay)
   seekerTravelHistory: [],
   seekerStartStationId: null,
+  playerTravelHistory: [],
+  playerStartStationId: null,
 
   // AI seeker scheduling
   seekerNextActionTime: 0,
   seekerTravelQueue: [],
+
+  // Disruptions
+  weatherZones: [],
+  delays: new Map(),
+  accidents: new Map(),
 
   // Queued connection
   queuedRoute: null,
@@ -274,6 +293,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         consensusLog: [],
         seekerTravelHistory: [],
         seekerStartStationId: playerStart,
+        playerTravelHistory: [],
+        playerStartStationId: playerStart,
+        weatherZones: createInitialWeatherZones(rng),
+        delays: new Map(),
+        accidents: new Map(),
       });
       return;
     }
@@ -299,6 +323,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       consensusLog: [],
       seekerTravelHistory: [],
       seekerStartStationId: null,
+      playerTravelHistory: [],
+      playerStartStationId: startStation,
+      weatherZones: createInitialWeatherZones(rng),
+      delays: new Map(),
+      accidents: new Map(),
     });
   },
 
@@ -388,25 +417,89 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = get();
     if (state.gameResult) return; // Stop clock when game is over
     const newClock = tickClock(state.clock, nowMs);
+    const deltaMinutes = newClock.gameMinutes - state.clock.gameMinutes;
+
+    // --- Tick weather & disruptions ---
+    const disruptionRng = createSeededRandom(state.seed + Math.floor(newClock.gameMinutes * 100));
+    const updatedWeatherZones = tickWeather(state.weatherZones, newClock.gameMinutes, deltaMinutes, disruptionRng);
+
+    const activeTrains = getActiveTrains(newClock.gameMinutes);
+    const trainPositionMap = new Map<string, { lat: number; lng: number; fromStationId?: string; toStationId?: string; progress?: number }>();
+    for (const t of activeTrains) {
+      trainPositionMap.set(t.id, {
+        lat: t.lat,
+        lng: t.lng,
+        fromStationId: t.dwelling ? undefined : (t.stations[t.currentSegmentIndex] ?? undefined),
+        toStationId: t.dwelling ? undefined : t.nextStationId,
+        progress: t.progress,
+      });
+    }
+
+    // Build operator lookup from routes (routeId -> operator)
+    const routes = getRoutes();
+    const routeOperatorMap = new Map<string, string>();
+    for (const r of routes) routeOperatorMap.set(r.id, r.operator);
+
+    const disruptionResult = tickDisruptions({
+      activeTrainIds: activeTrains.map(t => t.id),
+      getTrainPosition: (id) => trainPositionMap.get(id) ?? null,
+      weatherZones: updatedWeatherZones,
+      delays: state.delays,
+      accidents: state.accidents,
+      gameMinutes: newClock.gameMinutes,
+      deltaMinutes,
+      rng: disruptionRng,
+      getTrainOperator: (id) => {
+        const routeId = id.split(':')[0];
+        return routeOperatorMap.get(routeId) ?? null;
+      },
+    });
+
+    let updatedDelays = disruptionResult.delays;
+    let updatedAccidents = disruptionResult.accidents;
+
+    // Log disruption summary when events happen
+    if (disruptionResult.newDelays.length > 0 || disruptionResult.newAccidents.length > 0) {
+      const activeDelays = [...updatedDelays.values()].filter(d => !d.resolved).length;
+      logger.info('gameStore', `Disruptions: ${activeDelays} active delays, ${updatedAccidents.size} accidents, ${updatedWeatherZones.length} weather zones`);
+    }
+
+    // Compute blocked segments for segment-blocking logic
+    const blockedSegments = getBlockedSegments(updatedAccidents, newClock.gameMinutes);
 
     // Check player transit completion
     let playerTransit = state.playerTransit;
     let playerStationId = state.playerStationId;
     let visitedStations = state.visitedStations;
     let seekerTravelHistoryFromPlayer = state.seekerTravelHistory;
+    let playerTravelHistory = state.playerTravelHistory;
 
     if (playerTransit) {
-      // Multi-stop route: check intermediate arrival
-      if (playerTransit.nextArrivalTime != null && newClock.gameMinutes >= playerTransit.nextArrivalTime) {
-        // Record seeker travel history for this segment
+      // If train is stalled (accident or segment block), skip transit completion
+      // Re-check segment block status: if the block cleared, unstall
+      if (playerTransit.accidentStalled) {
+        const pFrom = playerTransit.fromStationId;
+        const pTo = playerTransit.toStationId;
+        if (!isSegmentBlocked(blockedSegments, pFrom, pTo)) {
+          // Segment unblocked — check if own train also has no accident before clearing
+          // (own-train accident is checked separately below)
+          playerTransit = { ...playerTransit, accidentStalled: undefined };
+        }
+      }
+
+      // Multi-stop route: check intermediate arrival (skip if stalled)
+      if (!playerTransit.accidentStalled && playerTransit.nextArrivalTime != null && newClock.gameMinutes >= playerTransit.nextArrivalTime) {
+        // Record travel history for this segment
+        const segEntry = {
+          fromStationId: playerTransit.fromStationId,
+          toStationId: playerTransit.toStationId,
+          departureTime: playerTransit.segmentDepartureTime,
+          arrivalTime: playerTransit.nextArrivalTime!,
+          trainType: playerTransit.trainType,
+        };
+        playerTravelHistory = [...playerTravelHistory, segEntry];
         if (state.playerRole === 'seeker') {
-          seekerTravelHistoryFromPlayer = [...seekerTravelHistoryFromPlayer, {
-            fromStationId: playerTransit.fromStationId,
-            toStationId: playerTransit.toStationId,
-            departureTime: playerTransit.segmentDepartureTime,
-            arrivalTime: playerTransit.nextArrivalTime,
-            trainType: playerTransit.trainType,
-          }];
+          seekerTravelHistoryFromPlayer = [...seekerTravelHistoryFromPlayer, segEntry];
         }
         // Arrived at intermediate stop
         playerStationId = playerTransit.toStationId;
@@ -424,6 +517,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
           const currentIdx = routeStations.indexOf(playerStationId);
           if (currentIdx >= 0 && currentIdx < routeStations.length - 1) {
             const nextStationId = routeStations[currentIdx + 1];
+
+            // Check if next segment is blocked by an accident
+            if (isSegmentBlocked(blockedSegments, playerStationId, nextStationId)) {
+              logger.info('gameStore', `Player held at ${playerStationId}: segment to ${nextStationId} blocked by accident`);
+              playerTransit = null;
+            } else {
             // Find the route to get stop times
             const routes = getRoutes();
             const route = routes.find(r => r.id === playerTransit!.routeId);
@@ -458,6 +557,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               // Route not found — clear transit
               playerTransit = null;
             }
+            }
           } else {
             // Can't find next station — clear transit
             playerTransit = null;
@@ -466,16 +566,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
           // No route stations info — clear transit
           playerTransit = null;
         }
-      } else if (playerTransit.nextArrivalTime == null && newClock.gameMinutes >= playerTransit.arrivalTime) {
-        // Record seeker travel history for legacy single-hop
+      } else if (!playerTransit.accidentStalled && playerTransit.nextArrivalTime == null && newClock.gameMinutes >= playerTransit.arrivalTime) {
+        // Record travel history for legacy single-hop
+        const legacyEntry = {
+          fromStationId: playerTransit.fromStationId,
+          toStationId: playerTransit.toStationId,
+          departureTime: playerTransit.segmentDepartureTime,
+          arrivalTime: playerTransit.arrivalTime,
+          trainType: playerTransit.trainType,
+        };
+        playerTravelHistory = [...playerTravelHistory, legacyEntry];
         if (state.playerRole === 'seeker') {
-          seekerTravelHistoryFromPlayer = [...seekerTravelHistoryFromPlayer, {
-            fromStationId: playerTransit.fromStationId,
-            toStationId: playerTransit.toStationId,
-            departureTime: playerTransit.segmentDepartureTime,
-            arrivalTime: playerTransit.arrivalTime,
-            trainType: playerTransit.trainType,
-          }];
+          seekerTravelHistoryFromPlayer = [...seekerTravelHistoryFromPlayer, legacyEntry];
         }
         // Non-route transit (legacy single-hop): arrival clears transit
         playerStationId = playerTransit.toStationId;
@@ -501,12 +603,96 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
+    // --- Apply delays/accidents to player transit ---
+    let gameResult = state.gameResult;
+    let phase = state.phase as GamePhase;
+    if (playerTransit && playerTransit.routeId) {
+      // Compute train instance ID for player's train
+      const pRoute = getRoutes().find(r => r.id === playerTransit!.routeId);
+      if (pRoute) {
+        const pFwdIdx = pRoute.stations.indexOf(playerTransit.routeStations?.[0] ?? '');
+        const pRevStations = [...pRoute.stations].reverse();
+        const pRevIdx = pRevStations.indexOf(playerTransit.routeStations?.[0] ?? '');
+        let pStopTimes = pRoute.stopTimes;
+        if (pFwdIdx < 0 && pRevIdx >= 0) pStopTimes = pRoute.reverseStopTimes;
+        const pDir = pStopTimes === pRoute.stopTimes ? 'forward' : 'reverse';
+        const pFromStop = pStopTimes.find(s => s.stationId === playerTransit!.routeStations?.[0]);
+        if (pFromStop) {
+          const pOriginDep = playerTransit.departureTime - pFromStop.departureMin;
+          const pTrainId = `${playerTransit.routeId}:${pDir}:${pOriginDep}`;
+
+          // Check accident
+          const pAccident = isTrainAccident(updatedAccidents, pTrainId);
+          if (pAccident) {
+            if (pAccident.isFatal) {
+              logger.error('gameStore', `FATAL ACCIDENT on player's train ${pTrainId}! Game over.`);
+              gameResult = state.playerRole === 'seeker' ? 'fatal_accident' : 'fatal_accident';
+              phase = 'round_end';
+            } else if (!playerTransit.accidentStalled) {
+              logger.warn('gameStore', `Player's train ${pTrainId} involved in ACCIDENT — stalled until ${Math.round(pAccident.resumeAt)}min`);
+              playerTransit = { ...playerTransit, accidentStalled: true };
+            }
+          } else {
+            // Check delay
+            const pDelay = getTrainDelay(updatedDelays, pTrainId);
+            if (pDelay > 0) {
+              if (pDelay !== playerTransit.delayMinutes) {
+                logger.info('gameStore', `Player's train ${pTrainId} delayed +${pDelay}min${playerTransit.delayMinutes ? ` (was +${playerTransit.delayMinutes}min)` : ''}`);
+              }
+              playerTransit = { ...playerTransit, delayMinutes: pDelay };
+            } else if (playerTransit.delayMinutes) {
+              logger.info('gameStore', `Player's train delay resolved (was +${playerTransit.delayMinutes}min)`);
+              playerTransit = { ...playerTransit, delayMinutes: undefined };
+            }
+            // Clear own-accident stall (segment-block stalls are handled at the top)
+            if (playerTransit.accidentStalled && !isSegmentBlocked(blockedSegments, playerTransit.fromStationId, playerTransit.toStationId)) {
+              logger.info('gameStore', `Player's train accident cleared, resuming travel`);
+              playerTransit = { ...playerTransit, accidentStalled: undefined };
+            }
+
+            // Check mid-segment blocking by another train's accident
+            if (playerTransit && !playerTransit.accidentStalled) {
+              const pFrom = playerTransit.fromStationId;
+              const pTo = playerTransit.toStationId;
+              if (isTrainBlockedOnSegment(blockedSegments, pFrom, pTo, pTrainId)) {
+                logger.info('gameStore', `Player's train blocked on ${pFrom}→${pTo} by accident ahead`);
+                playerTransit = { ...playerTransit, accidentStalled: true };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Check queued route for accidents
+    if (queuedRoute) {
+      const qRoute = getRoutes().find(r => r.id === queuedRoute!.routeId);
+      if (qRoute) {
+        // Check if any accident affects the queued train
+        for (const [accId] of updatedAccidents) {
+          if (accId.startsWith(queuedRoute!.routeId + ':')) {
+            logger.info('gameStore', `Queued route ${queuedRoute!.routeId} discarded due to accident`);
+            queuedRoute = null;
+            break;
+          }
+        }
+      }
+    }
+
     // Check seeker transit completion
     let seekerTransit = state.seekerTransit;
     let seekerStationId = state.seekerStationId;
     let seekerTravelQueue = state.seekerTravelQueue;
     let seekerTravelHistory = state.seekerTravelHistory;
-    if (seekerTransit && newClock.gameMinutes >= seekerTransit.arrivalTime) {
+    // Unstall seeker if segment block cleared
+    if (seekerTransit && seekerTransit.accidentStalled) {
+      const sFrom = seekerTransit.fromStationId;
+      const sTo = seekerTransit.toStationId;
+      if (!isSegmentBlocked(blockedSegments, sFrom, sTo)) {
+        seekerTransit = { ...seekerTransit, accidentStalled: undefined };
+      }
+    }
+    if (seekerTransit && !seekerTransit.accidentStalled && newClock.gameMinutes >= seekerTransit.arrivalTime) {
       seekerStationId = seekerTransit.toStationId;
       // Record travel history for route replay
       if (state.playerRole === 'hider') {
@@ -526,17 +712,80 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Process travel queue: start next hop immediately
       if (seekerTravelQueue.length > 0) {
         const [next, ...remaining] = seekerTravelQueue;
-        seekerTransit = {
-          fromStationId: next.fromStationId,
-          toStationId: next.stationId,
-          departureTime: next.departureTime,
-          segmentDepartureTime: next.departureTime,
-          arrivalTime: next.arrivalTime,
-          trainType: next.trainType as 'express' | 'regional' | 'local',
-        };
-        seekerTravelQueue = remaining;
+        // Check if next segment is blocked by an accident
+        if (isSegmentBlocked(blockedSegments, next.fromStationId, next.stationId)) {
+          logger.info('gameStore', `Seeker held at ${seekerStationId}: segment ${next.fromStationId}→${next.stationId} blocked`);
+          seekerTransit = null;
+          seekerTravelQueue = [];
+        } else {
+          seekerTransit = {
+            fromStationId: next.fromStationId,
+            toStationId: next.stationId,
+            departureTime: next.departureTime,
+            segmentDepartureTime: next.departureTime,
+            arrivalTime: next.arrivalTime,
+            trainType: next.trainType as 'express' | 'regional' | 'local',
+          };
+          seekerTravelQueue = remaining;
+        }
       } else {
         seekerTransit = null;
+      }
+    }
+
+    // --- Apply delays/accidents to seeker transit ---
+    if (seekerTransit && seekerTransit.routeId) {
+      const sRoute = getRoutes().find(r => r.id === seekerTransit!.routeId);
+      if (sRoute) {
+        const sFwdIdx = sRoute.stations.indexOf(seekerTransit.routeStations?.[0] ?? '');
+        const sRevStations = [...sRoute.stations].reverse();
+        const sRevIdx = sRevStations.indexOf(seekerTransit.routeStations?.[0] ?? '');
+        let sStopTimes = sRoute.stopTimes;
+        if (sFwdIdx < 0 && sRevIdx >= 0) sStopTimes = sRoute.reverseStopTimes;
+        const sDir = sStopTimes === sRoute.stopTimes ? 'forward' : 'reverse';
+        const sFromStop = sStopTimes.find(s => s.stationId === seekerTransit!.routeStations?.[0]);
+        if (sFromStop) {
+          const sOriginDep = seekerTransit.departureTime - sFromStop.departureMin;
+          const sTrainId = `${seekerTransit.routeId}:${sDir}:${sOriginDep}`;
+
+          const sAccident = isTrainAccident(updatedAccidents, sTrainId);
+          if (sAccident) {
+            if (sAccident.isFatal) {
+              logger.error('gameStore', `FATAL ACCIDENT on seeker's train ${sTrainId}! Seeker killed — hider wins.`);
+              gameResult = 'seeker_killed';
+              phase = 'round_end';
+            } else if (!seekerTransit.accidentStalled) {
+              logger.warn('gameStore', `Seeker's train ${sTrainId} involved in ACCIDENT — stalled until ${Math.round(sAccident.resumeAt)}min`);
+              seekerTransit = { ...seekerTransit, accidentStalled: true };
+            }
+          } else {
+            const sDelay = getTrainDelay(updatedDelays, sTrainId);
+            if (sDelay > 0) {
+              if (sDelay !== seekerTransit.delayMinutes) {
+                logger.info('gameStore', `Seeker's train ${sTrainId} delayed +${sDelay}min${seekerTransit.delayMinutes ? ` (was +${seekerTransit.delayMinutes}min)` : ''}`);
+              }
+              seekerTransit = { ...seekerTransit, delayMinutes: sDelay };
+            } else if (seekerTransit.delayMinutes) {
+              logger.info('gameStore', `Seeker's train delay resolved (was +${seekerTransit.delayMinutes}min)`);
+              seekerTransit = { ...seekerTransit, delayMinutes: undefined };
+            }
+            // Clear own-accident stall (segment-block stalls are handled at the top)
+            if (seekerTransit.accidentStalled && !isSegmentBlocked(blockedSegments, seekerTransit.fromStationId, seekerTransit.toStationId)) {
+              logger.info('gameStore', `Seeker's train accident cleared, resuming travel`);
+              seekerTransit = { ...seekerTransit, accidentStalled: undefined };
+            }
+
+            // Check mid-segment blocking for seeker
+            if (seekerTransit && !seekerTransit.accidentStalled) {
+              const sFrom = seekerTransit.fromStationId;
+              const sTo = seekerTransit.toStationId;
+              if (isTrainBlockedOnSegment(blockedSegments, sFrom, sTo, sTrainId)) {
+                logger.info('gameStore', `Seeker's train blocked on ${sFrom}→${sTo} by accident ahead`);
+                seekerTransit = { ...seekerTransit, accidentStalled: true };
+              }
+            }
+          }
+        }
       }
     }
 
@@ -553,7 +802,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       seekerStationId,
       seekerTravelQueue,
       seekerTravelHistory: mergedTravelHistory,
+      playerTravelHistory,
       queuedRoute,
+      weatherZones: updatedWeatherZones,
+      delays: updatedDelays,
+      accidents: updatedAccidents,
+      ...(gameResult !== state.gameResult ? { gameResult, phase } : {}),
     });
 
     // Process queued route now that state is updated
@@ -601,6 +855,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         consensusLog: [],
         seekerTravelHistory: [],
         seekerStartStationId: null,
+        playerTravelHistory: [],
+        playerStartStationId: null,
+        weatherZones: [],
+        delays: new Map(),
+        accidents: new Map(),
       });
     } else {
       set({ phase: to });
@@ -691,6 +950,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       consensusLog: [],
       seekerTravelHistory: [],
       seekerStartStationId: bestStation,
+      // Preserve playerTravelHistory and playerStartStationId from hiding phase
+      // Preserve weatherZones from hiding phase, reset delays/accidents
+      delays: new Map(),
+      accidents: new Map(),
     });
   },
 
@@ -1099,6 +1362,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Hider can't board a train that arrives after the hiding time limit
     const HIDING_TIME_LIMIT = 240;
     if (phase === 'hiding' && finalArrival > HIDING_TIME_LIMIT) return;
+
+    // Check if first segment is blocked by an accident
+    const boardBlockedSegments = getBlockedSegments(get().accidents, clock.gameMinutes);
+    if (isSegmentBlocked(boardBlockedSegments, playerStationId, travelStations[1])) {
+      logger.info('gameStore', `Cannot board route ${routeId}: segment ${playerStationId}→${travelStations[1]} blocked by accident`);
+      return;
+    }
 
     set({
       playerTransit: {

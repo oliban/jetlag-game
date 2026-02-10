@@ -1,8 +1,11 @@
 import mapboxgl from 'mapbox-gl';
 import type { TrainType } from '../types/game';
+import type { TrainDelay, TrainAccident } from '../types/disruptions';
 import type { StationMap } from '../data/graph';
+import { getStations } from '../data/graph';
 import { getActiveTrains } from '../engine/activeTrains';
 import { getRoutes } from '../engine/trainRoutes';
+import { getBlockedSegments, isTrainBlockedOnSegment, isSegmentBlocked, getSegmentBlock } from '../engine/segmentBlock';
 import { RAILWAY_COLORS, TRAIN_COLORS } from '../theme/colors';
 
 const TRAIN_CARS: Record<TrainType, number> = {
@@ -184,40 +187,187 @@ export function initTrainLayer(map: mapboxgl.Map): void {
   });
 }
 
+/**
+ * Module-level state: snapshot of blocked trains so they persist
+ * after their schedule ends. Key = train instance ID.
+ */
+const frozenBlockedTrains = new Map<string, {
+  fromStationId: string;
+  toStationId: string;
+  feature: GeoJSON.Feature;
+}>();
+
 /** Update train positions for the current game time */
 export function updateTrainPositions(
   map: mapboxgl.Map,
   gameMinutes: number,
+  delays?: Map<string, TrainDelay>,
+  accidents?: Map<string, TrainAccident>,
 ): void {
   const source = map.getSource('active-trains') as mapboxgl.GeoJSONSource;
   if (!source) return;
 
   const trains = getActiveTrains(gameMinutes);
+  const stationMap = getStations();
 
-  const features: GeoJSON.Feature[] = trains.map((train) => ({
-    type: 'Feature',
-    properties: {
-      id: train.id,
-      routeId: train.routeId,
-      trainType: train.trainType,
-      country: train.country,
-      bearing: train.bearing,
-      progress: train.progress,
-      stations: JSON.stringify(train.stations),
-      finalStationId: train.finalStationId,
-      nextStationId: train.nextStationId,
-      currentSegmentIndex: train.currentSegmentIndex,
-      speed: train.speed,
-      dwelling: train.dwelling,
-      dwellingStationId: train.dwellingStationId,
-    },
-    geometry: {
-      type: 'Point',
-      coordinates: [train.lng, train.lat],
-    },
-  }));
+  // Compute blocked segments from accidents
+  const blockedSegments = accidents ? getBlockedSegments(accidents, gameMinutes) : new Map();
 
-  source.setData({ type: 'FeatureCollection', features });
+  // Also include accident-stalled trains that have "left" the schedule
+  // (their scheduled journey ended but they're still stopped)
+  const activeTrainIds = new Set(trains.map(t => t.id));
+  const stalledFeatures: GeoJSON.Feature[] = [];
+  if (accidents) {
+    for (const [trainId, accident] of accidents) {
+      if (activeTrainIds.has(trainId)) continue; // still in schedule, handled below
+      if (gameMinutes >= accident.resumeAt) continue; // accident over
+      // Train fell off the schedule but is still stalled — render at stopped position
+      const parts = trainId.split(':');
+      const routeId = parts[0];
+      const route = getRoutes().find(r => r.id === routeId);
+      if (!route) continue;
+      const originCountry = stationMap[route.stations[0]]?.country ?? 'France';
+      stalledFeatures.push({
+        type: 'Feature',
+        properties: {
+          id: trainId,
+          routeId,
+          trainType: route.trainType,
+          country: originCountry,
+          bearing: 0,
+          progress: accident.progress,
+          stations: '[]',
+          finalStationId: '',
+          nextStationId: accident.segmentToStationId,
+          currentSegmentIndex: 0,
+          speed: 0,
+          dwelling: false,
+          dwellingStationId: null,
+          accident: true,
+          blocked: false,
+          delayMinutes: 0,
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [accident.stoppedAtLng, accident.stoppedAtLat],
+        },
+      });
+    }
+  }
+
+  const features: GeoJSON.Feature[] = [];
+
+  for (const train of trains) {
+    const accident = accidents?.get(train.id);
+    const delay = delays?.get(train.id);
+    const hasAccident = accident && gameMinutes < accident.resumeAt;
+    const delayMin = delay && !delay.resolved ? delay.delayMinutes : 0;
+
+    // If this train was previously frozen on a blocked segment, check if still blocked
+    const frozen = frozenBlockedTrains.get(train.id);
+    if (frozen && isSegmentBlocked(blockedSegments, frozen.fromStationId, frozen.toStationId)) {
+      // Still blocked — keep rendering at frozen position, don't follow schedule
+      features.push(frozen.feature);
+      continue;
+    } else if (frozen) {
+      // Segment cleared — unfreeze, render normally
+      frozenBlockedTrains.delete(train.id);
+    }
+
+    // Check if train is blocked by an accident ahead on the same segment
+    let isBlocked = false;
+    let blockedLng = train.lng;
+    let blockedLat = train.lat;
+    let blockedFrom = '';
+    let blockedTo = '';
+
+    if (!hasAccident && blockedSegments.size > 0) {
+      if (train.dwelling && train.dwellingStationId) {
+        // Dwelling train: check if next segment is blocked
+        const nextStationId = train.nextStationId;
+        if (isSegmentBlocked(blockedSegments, train.dwellingStationId, nextStationId)) {
+          isBlocked = true;
+          blockedFrom = train.dwellingStationId;
+          blockedTo = nextStationId;
+          // Already at station, no position override needed
+        }
+      } else {
+        // Moving train: check if blocked on current segment
+        const fromStation = train.stations[train.currentSegmentIndex];
+        const toStation = train.stations[train.currentSegmentIndex + 1];
+        if (fromStation && toStation && isTrainBlockedOnSegment(blockedSegments, fromStation, toStation, train.id)) {
+          isBlocked = true;
+          blockedFrom = fromStation;
+          blockedTo = toStation;
+          // Train halts in place, well behind the accident (away from smoke)
+          const block = getSegmentBlock(blockedSegments, fromStation, toStation);
+          const fromSt = stationMap[fromStation];
+          const toSt = stationMap[toStation];
+          if (block && fromSt && toSt) {
+            const cappedProgress = Math.min(train.progress, Math.max(0, block.accidentProgress - 0.20));
+            blockedLng = fromSt.lng + (toSt.lng - fromSt.lng) * cappedProgress;
+            blockedLat = fromSt.lat + (toSt.lat - fromSt.lat) * cappedProgress;
+          }
+        }
+      }
+    }
+
+    // If train has an accident, freeze it at the accident position
+    const lng = hasAccident ? accident.stoppedAtLng : isBlocked ? blockedLng : train.lng;
+    const lat = hasAccident ? accident.stoppedAtLat : isBlocked ? blockedLat : train.lat;
+    const bearing = train.bearing;
+
+    const feature: GeoJSON.Feature = {
+      type: 'Feature',
+      properties: {
+        id: train.id,
+        routeId: train.routeId,
+        trainType: train.trainType,
+        country: train.country,
+        bearing,
+        progress: hasAccident ? accident.progress : train.progress,
+        stations: JSON.stringify(train.stations),
+        finalStationId: train.finalStationId,
+        nextStationId: train.nextStationId,
+        currentSegmentIndex: train.currentSegmentIndex,
+        speed: hasAccident ? 0 : isBlocked ? 0 : train.speed,
+        dwelling: hasAccident ? false : train.dwelling,
+        dwellingStationId: hasAccident ? null : train.dwellingStationId,
+        accident: !!hasAccident,
+        blocked: isBlocked,
+        delayMinutes: delayMin,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [lng, lat],
+      },
+    };
+
+    features.push(feature);
+
+    // Snapshot blocked trains so they persist after schedule ends
+    if (isBlocked) {
+      frozenBlockedTrains.set(train.id, {
+        fromStationId: blockedFrom,
+        toStationId: blockedTo,
+        feature,
+      });
+    }
+  }
+
+  // Render frozen blocked trains that fell off the schedule
+  for (const [trainId, frozen] of frozenBlockedTrains) {
+    if (activeTrainIds.has(trainId)) continue; // already processed above
+    if (isSegmentBlocked(blockedSegments, frozen.fromStationId, frozen.toStationId)) {
+      // Segment still blocked — keep rendering at frozen position
+      features.push(frozen.feature);
+    } else {
+      // Segment cleared — remove snapshot
+      frozenBlockedTrains.delete(trainId);
+    }
+  }
+
+  source.setData({ type: 'FeatureCollection', features: [...features, ...stalledFeatures] });
 }
 
 /** Set up hover tooltip on train icons */
@@ -313,7 +463,19 @@ export function initTrainHover(
     const statusDiv = document.createElement('div');
     statusDiv.style.cssText = 'font-size:11px;margin-top:2px;color:#94a3b8;';
 
-    if (dwelling && dwellingStationId && dwellingStationId !== 'null') {
+    const isAccident = props.accident as boolean;
+    const isBlockedProp = props.blocked as boolean;
+    const delayMinutes = props.delayMinutes as number;
+
+    if (isAccident) {
+      statusDiv.style.color = '#ef4444';
+      statusDiv.style.fontWeight = '700';
+      statusDiv.textContent = 'ACCIDENT — Train stopped';
+    } else if (isBlockedProp) {
+      statusDiv.style.color = '#eab308';
+      statusDiv.style.fontWeight = '600';
+      statusDiv.textContent = 'Halted — Waiting for track to clear';
+    } else if (dwelling && dwellingStationId && dwellingStationId !== 'null') {
       const dwellingName = stationMap[dwellingStationId]?.name ?? dwellingStationId;
       statusDiv.textContent = 'Stopped at: ';
       const dwellSpan = document.createElement('span');
@@ -328,6 +490,13 @@ export function initTrainHover(
       statusDiv.appendChild(nextSpan);
     }
     container.appendChild(statusDiv);
+
+    if (delayMinutes > 0 && !isAccident) {
+      const delayDiv = document.createElement('div');
+      delayDiv.style.cssText = 'font-size:11px;margin-top:2px;color:#f97316;font-weight:600;';
+      delayDiv.textContent = `DELAYED +${delayMinutes}min`;
+      container.appendChild(delayDiv);
+    }
 
     popup
       .setLngLat(e.lngLat)

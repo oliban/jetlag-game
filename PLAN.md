@@ -276,50 +276,77 @@ wait()                      → Do nothing.
 
 ---
 
-## Train Delay Engine
+## Weather, Delays & Accidents System (M5 — Implemented)
 
-### Delay Types
+### Weather Zones
+Dynamic circular weather zones drift across Europe, grow/shrink, and upgrade over their lifetime:
 
-| Delay Type | Probability | Duration | Scope |
-|------------|------------|----------|-------|
-| **Minor delay** | 15% per departure | 5-15 min | Single train |
-| **Moderate delay** | 5% per departure | 15-45 min | Single train |
-| **Major delay** | 1% per departure | 45-120 min | Single train, may cascade |
-| **Cancellation** | 0.5% per departure | N/A (next train) | Single service |
-| **Weather event** | ~1 per game day | +10-30 min all trains | Regional (200km radius) |
-| **Strike** | ~1 per 3 game days | 2-6 hour shutdown | Country-wide, one operator |
+| Property | Range | Notes |
+|----------|-------|-------|
+| **Radius** | 50–200 km | Grows or shrinks per `growthRateKmPerHour` (-20 to +30) |
+| **Lifetime** | 60–360 game minutes | Removed on expiry or when radius ≤ 0 |
+| **Wind drift** | 5–30 km/h | Moves zone center each tick |
+| **Upgrade** | cloudy → rain → storm | At 33% age → rain, at 66% age → storm |
+| **Spawn rate** | ~1 per 120–240 min | Seeded RNG, max 8 active zones |
+| **Initial zones** | 2–3 at game start | For immediate visual interest |
 
-### Cascade Logic
-When a train is delayed 30+ minutes:
-- 40% chance connecting services from the destination station are delayed 5-15 min
-- If the delayed train shares track with other services, 20% chance those are also delayed
-- Major hub stations (Paris, Frankfurt, Zurich) have higher cascade probability
+Weather type at any point = worst overlapping zone (haversine point-in-circle check).
 
-### How Players Experience Delays
-- **Departure board** shows live status: "On time", "Delayed +12 min", "Cancelled"
-- Delays are revealed progressively (like real life): a train might show "On time" and then switch to "Delayed" closer to departure
-- Players must factor delay risk into route planning
-- `get_schedule()` returns current known delay status, but delays can worsen
+### Delay System
+Per-tick probability rolling for each active train, based on weather at the train's position:
 
-### Implementation
-```typescript
-interface DelayEngine {
-  // Called each game-minute tick
-  tick(gameTime: number): DelayEvent[];
+| Weather | Delay prob/min | Notes |
+|---------|---------------|-------|
+| Clear | 0.05% | Rare delays |
+| Cloudy | 0.1% | Slightly more common |
+| Rain | 0.3% | Noticeable impact |
+| Storm | 0.8% | Frequent delays |
 
-  // Get current status for a specific departure
-  getDepartureStatus(serviceId: string, scheduledTime: number): {
-    status: 'on_time' | 'delayed' | 'cancelled';
-    delayMinutes: number;
-    updatedDepartureTime: number;
-  };
+**Operator bias**: Some train companies are more delay-prone than others:
+- **Worst**: DB (2.5×), DB Regio (2.2×), S-Bahn (1.8×), PKP Regio (1.9×)
+- **Average**: Trenitalia (1.6×), MÁV (1.7×), SNCF (1.4×), ČD (1.5×)
+- **Best**: SBB (0.6×), NS (0.8×), DSB (0.9×), ÖBB (0.9×)
 
-  // Active regional events
-  getActiveEvents(): WeatherEvent | StrikeEvent[];
-}
-```
+**Escalation lifecycle** (checked every 15–30 game minutes):
+- 60% delay doubles (capped at 120 min)
+- 30% stays the same (reschedule check)
+- 10% resolves early
+- Max 3 escalation rounds, then auto-resolve
 
-File: `src/engine/delayEngine.ts`
+**Departure board integration**: `getUpcomingDeparturesWithDelays()` adds `delayMinutes` and `status` ('on-time' | 'delayed' | 'cancelled') to each departure.
+
+### Accident System
+Much rarer than delays (~10× less likely):
+
+| Weather | Accident prob/min |
+|---------|------------------|
+| Clear | 0.005% |
+| Cloudy | 0.01% |
+| Rain | 0.03% |
+| Storm | 0.1% |
+
+- Train stops for 120–360 game minutes
+- **Fatal chance**: 5% base, 10% in rain/storm
+- Fatal accident on player's train → `gameResult = 'fatal_accident'`, game over
+- Fatal accident on seeker's train → `gameResult = 'seeker_killed'`, hider wins
+
+### Player Transit Integration
+- Delays shift `nextArrivalTime` and `arrivalTime` dynamically each tick
+- Accidents set `accidentStalled = true`, freeze position
+- Train instance ID derived from transit: `"{routeId}:{dir}:{originDep}"`
+- AI seekers see disruption data via stateFilter but cannot predict escalation
+
+### Map Visualization
+- **Weather overlay**: GeoJSON fill+line circles, color-coded (gray/blue-gray/purple for cloudy/rain/storm)
+- **Smoke renderer**: Blurred gray circles at accident positions with pulsing opacity
+- **Train icons**: Delayed trains show in departure board; accident trains frozen on map
+
+### Files
+- `src/types/disruptions.ts` — WeatherZone, TrainDelay, TrainAccident types
+- `src/engine/weather.ts` — Zone lifecycle: tick, spawn, drift, upgrade, getWeatherAt
+- `src/engine/disruptions.ts` — Delay/accident rolling, escalation, operator bias
+- `src/map/weatherLayer.ts` — GeoJSON weather zone rendering
+- `src/map/smokeRenderer.ts` — Accident smoke effect rendering
 
 ---
 
@@ -449,11 +476,11 @@ interface RoutePlan {
 
 ### Station & Connection Dataset
 
-Curated static dataset: **~200 major European stations**, **~500 connections**.
+Curated static dataset: **47 stations**, **~85 connections** across **10 countries**.
 
-Source: [trainline-eu/stations](https://github.com/trainline-eu/stations) open dataset, filtered to main stations. Travel times from real distances with speed factors. Schedule frequencies based on route importance.
+Paris (merged 3 gares) and London (merged 2 stations) are single nodes. Station IDs use short forms: `paris`, `london`, `munich-hbf`, `rome-termini`.
 
-**Coverage:** France (~30), Germany (~30), UK (~20), Italy (~15), Spain (~15), Switzerland (~10), Austria (~10), Benelux (~10), Scandinavia (~10), Eastern Europe (~20), other (~10).
+Train types determined by connection distance: express (>300km), regional (100-300km), local (<100km).
 
 ---
 
@@ -490,7 +517,8 @@ jetlag/
 │   ├── index.css
 │   │
 │   ├── types/
-│   │   ├── game.ts           # Player, Station, Connection, GamePhase
+│   │   ├── game.ts           # Player, Station, Connection, GamePhase, TransitState
+│   │   ├── disruptions.ts    # WeatherZone, TrainDelay, TrainAccident types (M5)
 │   │   ├── questions.ts      # QuestionTemplate, QuestionAnswer, Constraint
 │   │   ├── schedule.ts       # TrainService, Departure, DelayEvent
 │   │   ├── cards.ts          # Card, HiderDeck, CardEffect types
@@ -504,9 +532,16 @@ jetlag/
 │   │   ├── gameLoop.ts       # requestAnimationFrame clock (variable speed)
 │   │   ├── stateMachine.ts   # Phase transitions
 │   │   ├── pathfinding.ts    # Dijkstra on train network
-│   │   ├── scheduler.ts      # Train schedule generation, querying, route planning
-│   │   ├── delayEngine.ts    # Delay/cancellation/weather/strike simulation
+│   │   ├── trainSchedule.ts  # Train schedule generation (express/regional/local)
+│   │   ├── trainRoutes.ts    # Route queries, departures, multi-stop travel
+│   │   ├── activeTrains.ts   # Active train position computation (~150-200 trains)
+│   │   ├── weather.ts        # Weather zone lifecycle: tick, spawn, drift (M5)
+│   │   ├── disruptions.ts    # Delay/accident rolling, escalation, operator bias (M5)
 │   │   ├── consensus.ts      # Seeker consensus flow + dominance tiebreak
+│   │   ├── consensusLoop.ts  # Consensus orchestration loop
+│   │   ├── coinSystem.ts     # Coin budget for questions (radar=1, relative=2, precision=3)
+│   │   ├── seeking.ts        # Seeker AI orchestration
+│   │   ├── geo.ts            # Haversine distance, geo utilities
 │   │   ├── constraints.ts    # Question → map constraint polygons
 │   │   ├── hiderDeck.ts      # Card deck: draw, hand management, play cards
 │   │   ├── logger.ts         # Debug communications log (all tool calls + events)
@@ -521,14 +556,11 @@ jetlag/
 │   │   └── sessionManager.ts # Per-player sessions with role-based tool access
 │   │
 │   ├── client/
-│   │   ├── humanClient.ts    # Translates UI interactions → MCP tool calls
-│   │   ├── aiClient.ts       # Orchestrates LLM API call with MCP tools
-│   │   ├── systemPrompts.ts  # Role-specific prompts (includes dominance)
-│   │   └── providers/
-│   │       ├── types.ts      # Provider interface (translate MCP → native format)
-│   │       ├── claude.ts     # Anthropic API adapter (MCP tools → Anthropic tools)
-│   │       ├── openai.ts     # OpenAI API adapter (MCP tools → functions)
-│   │       └── gemini.ts     # Google AI adapter (MCP tools → declarations)
+│   │   ├── aiClient.ts       # Orchestrates LLM API call with tools
+│   │   ├── systemPrompts.ts  # Role-specific prompts (includes disruption awareness)
+│   │   ├── claudeProvider.ts # Anthropic API adapter (Claude Sonnet)
+│   │   ├── openaiProvider.ts # OpenAI API adapter (GPT-4o)
+│   │   └── providerAdapter.ts # Normalized conversation format, converted at boundary
 │   │
 │   ├── questions/
 │   │   ├── questionPool.ts   # All question definitions
@@ -536,33 +568,25 @@ jetlag/
 │   │   └── constraintGen.ts  # Generate map overlays from answers
 │   │
 │   ├── map/
-│   │   ├── GameMap.tsx        # Mapbox GL JS component
-│   │   ├── layers.ts         # Layer definitions
-│   │   ├── constraintRenderer.ts
-│   │   └── animations.ts     # Travel + delay animations
+│   │   ├── GameMap.tsx        # Mapbox GL JS component (stations, trains, weather, smoke)
+│   │   ├── trainRenderer.ts  # Moving train icons (canvas-drawn, Mapbox symbol layer)
+│   │   ├── constraintRenderer.ts # Question constraint overlays
+│   │   ├── weatherLayer.ts   # GeoJSON weather zone rendering (M5)
+│   │   └── smokeRenderer.ts  # Accident smoke effect rendering (M5)
 │   │
 │   ├── components/
 │   │   ├── Header.tsx         # Round, phase, clock, speed control
-│   │   ├── Sidebar.tsx        # Player cards, actions, logs
-│   │   ├── PlayerCard.tsx     # Name, role, model, cards held, dominance hints
-│   │   ├── ActionPanel.tsx    # Propose action / agree / counter-propose
-│   │   ├── ConsensusPanel.tsx # Shows both proposals, agree/disagree buttons
-│   │   ├── QuestionDialog.tsx # Category picker → question picker
-│   │   ├── QuestionLog.tsx    # History of questions + answers + constraints
-│   │   ├── DepartureBoard.tsx # Live schedule + past departures + route planner
-│   │   ├── RoutePlanner.tsx   # Multi-leg route planning with transfers
-│   │   ├── ChatPanel.tsx      # Seeker↔Seeker discussion (human can type)
-│   │   ├── HandPanel.tsx      # Hider's card hand (time bonuses, curses, power-ups)
-│   │   ├── DebugPanel.tsx     # Communications log viewer (filterable)
+│   │   ├── Sidebar.tsx        # Departure board, station info, connections
 │   │   ├── SetupScreen.tsx    # Model selection, API keys, game settings
-│   │   ├── RoundTransition.tsx
-│   │   ├── GameOverScreen.tsx
-│   │   └── DelayAlert.tsx     # Toast notifications for delays/events
+│   │   ├── QuestionLog.tsx    # History of questions + answers + constraints
+│   │   ├── DebugPanel.tsx     # Communications log viewer
+│   │   ├── RoundEndScreen.tsx # Game over variants (seeker wins, hider wins, fatal accident, seeker killed)
+│   │   └── TransitIndicator.tsx # Current trip display (delay/accident banners)
 │   │
 │   ├── data/
-│   │   ├── stations.json      # ~200 European stations with metadata
-│   │   ├── connections.json   # ~500 connections with train types
-│   │   └── countries.json     # Country boundaries, operators
+│   │   ├── stations.json      # 47 European stations with metadata
+│   │   ├── connections.json   # ~85 connections with distances
+│   │   └── graph.ts           # Network graph, adjacency, station lookup
 │   │
 │   └── utils/
 │       ├── geo.ts             # Turf.js wrappers
@@ -643,79 +667,53 @@ Key UI elements for new mechanics:
 
 ## Implementation Phases
 
-### Phase 1: Project Scaffold & Data
-- Vite + React + TS + Tailwind setup
-- Type definitions (`src/types/*`)
-- Curated station/connection dataset with operators (`src/data/*`)
-- **Train schedule engine** with generation, querying, route planning (`src/engine/scheduler.ts`)
-- Pathfinding / Dijkstra (`src/engine/pathfinding.ts`)
-- Debug logger (`src/engine/logger.ts`)
+### M1: Static Board (Complete)
+- Vite + React + TS + Tailwind CSS 4 setup
+- Type definitions, station/connection data (47 stations, ~85 connections, 10 countries)
+- Mapbox GL JS map with station markers, connection lines, pathfinding (Dijkstra)
 
-### Phase 2: Map & Core UI
-- Mapbox GL JS integration with station/connection layers
-- Station interactions (click/hover)
-- Sidebar skeleton, player cards
-- **Departure board** with tabs (departures, past, route planner, connections)
-- **Route planner** component
-- Setup screen (model selection, API key inputs)
-
-### Phase 3: Game Engine
+### M2: Human Hides (Complete)
 - Game clock with variable speed (1sec=0.5min base, hider can 2x/4x during hiding)
-- State machine: setup → hiding → seeking → round end → game over
-- **Delay engine** with cascading effects (`src/engine/delayEngine.ts`)
-- **Consensus engine** (`src/engine/consensus.ts`) - proposal, discussion, agree/insist/tiebreak
-- **Hider deck & card system** (`src/engine/hiderDeck.ts`) - draw, hand, play
-- Scoring (base hide time + time bonus cards)
+- State machine: setup → hiding → seeking → round_end
+- Travel system, settling, hiding zone (0.8km radius)
 
-### Phase 4: MCP Server & Clients (anti-cheat)
-- **MCP game server** (`src/mcp/gameServer.ts`) - tool registry, dispatch, session management
-- **MCP tool definitions** (`src/mcp/toolDefinitions.ts`) - all tools as MCP JSON schemas
-- **Tool handlers** (`src/mcp/toolHandlers.ts`) - execution logic per tool
-- State filter by role (`src/mcp/stateFilter.ts`) - filters tool list per session
-- Action validator (`src/mcp/actionValidator.ts`) - validates every call
-- Human client: maps UI clicks → MCP tool calls (`src/client/humanClient.ts`)
-- AI client: translates MCP tools → LLM provider format (`src/client/aiClient.ts`)
-- LLM provider adapters (Claude, OpenAI, Gemini) with MCP → native translation
-- System prompts with dominance personality injection
+### M3: AI Seeks (Complete)
+- Claude tool-use AI seeker (Anthropic API, direct browser fetch)
+- Question system with auto-evaluation, constraint overlays
+- Win/lose conditions, round end screen
 
-### Phase 5: Question System (P1 cards from CARDS.md)
-- 6 question categories with auto-evaluation (~30 P1 questions)
-- Constraint generation + map overlay rendering
-- Card draw mechanics when hider answers
-- Question dialog UI, cooldown system, question log
+### M4: Train Schedules & Dual Seekers (Complete)
+- Train schedule engine: express (>300km, 120min freq, 250km/h), regional (100-300km, 60min, 150km/h), local (<100km, 30min, 80km/h)
+- Moving train visualization (~150-200 active trains, Mapbox symbol layer)
+- Dual AI seekers: Claude (Sonnet) + OpenAI (GPT-4o) with provider adapter pattern
+- Consensus engine: proposal → agreement → discussion → tiebreaker
+- Coin system: radar=1, relative=2, precision=3, starting budget=10
 
-### Phase 6: Consensus UI & Chat
-- ConsensusPanel component (proposals, agree/insist/counter)
-- ChatPanel for seeker discussion
-- AI-to-AI negotiation display (when human is hider)
-- **Hand panel** for hider (view/play cards)
-- **Debug panel** (communications log viewer)
+### M5: Weather, Delays & Accidents (Complete)
+- Dynamic weather zones (cloudy → rain → storm), drifting, growing/shrinking
+- Per-train delay rolling based on weather + operator bias (DB worst, SBB best)
+- Delay escalation lifecycle (60% double / 30% same / 10% resolve, max 3 rounds)
+- Rare accidents with fatal chance (5-10%) → game over variants
+- Weather overlay + accident smoke on map
+- Departure board integration with delay/cancelled status
+- Transit indicator shows delay/accident banners
+- AI seekers see disruptions via stateFilter (no escalation info)
 
-### Phase 7: Polish & Testing
-- Round transitions, game over screen
-- Anti-cheat unit tests (state filter, action validator)
-- Consensus + dominance tests
-- Delay engine + schedule engine tests
-- Full playtest: 3 rounds against 2 different LLM models
-- Travel animations, camera fly-to, delay visualizations
-- Past timetable forensics verification
-
-### Phase 8: P2/P3 Cards (later)
-- Add remaining question types from CARDS.md
-- Thermometer questions (seekers must move before answer)
-- Tentacles questions (proximity lists)
-- Additional curse/power-up cards
-- Time Traps mechanic
+### Future: Cards & Extended Features
+- Card-draw system (hider draws cards when answering questions — see CARDS.md)
+- MCP tool server architecture (formal tool registry, sessions, action validator)
+- Past timetable forensics for seekers
+- Additional question categories (Thermometer, Tentacles)
+- Multi-round game (3 rounds, rotate hider)
 
 ---
 
 ## Verification Plan
 
-1. **Anti-cheat tests**: State filter unit tests ensure seekers never receive hider position, hider cards, or hidden game state. Action validator rejects out-of-turn actions, insufficient coins, cooldown violations, actions without consensus.
-2. **Consensus tests**: Verify dominance tiebreak works correctly. Verify both must agree before action executes. Verify discussion round limits.
-3. **Schedule engine tests**: Verify departures are generated correctly, route planner finds optimal paths, past departures accurately reflect what happened during hiding phase.
-4. **Delay engine tests**: Run 1000 simulated game-days, verify delay distributions match targets. Verify cascade logic. Verify progressive delay revelation.
-5. **Card system tests**: Verify draw rates per category, hand size limits, card effects (veto blocks question, curses apply effects, time bonuses add to score).
-6. **Manual playtest**: Play full 3-round game. Verify: schedule feels realistic, delays add tension, consensus creates interesting negotiation, past timetable helps seekers deduce routes.
-7. **Cross-model test**: Play with Claude vs GPT-4o to verify both adapters work with tool-use format.
-8. **Debug log audit**: Review communications.log to verify no information leaks. Verify all tool calls are logged with full parameters and results.
+1. **Unit tests**: 195 passing tests (Vitest) covering pathfinding, schedule engine, state filter, consensus, coin system, weather, disruptions
+2. **Anti-cheat tests**: State filter ensures seekers never receive hider position. Disruption info exposed without escalation details.
+3. **Weather tests**: Zone tick, spawn, drift, expiry, getWeatherAt point-in-circle
+4. **Disruption tests**: Delay creation, escalation lifecycle, operator bias, accident creation, fatal check
+5. **Cross-model test**: Claude (Sonnet) + OpenAI (GPT-4o) dual seeker consensus verified working
+6. **Visual verification**: Weather overlay renders, smoke appears on accidents, departure board shows delays, transit indicator shows delay/accident banners
+7. **TypeScript**: Zero type errors across entire codebase

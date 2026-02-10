@@ -13,9 +13,12 @@ const REPLAY_SPEED = 20;
 interface ReplayMiniMapProps {
   history: TravelHistoryEntry[];
   hiderStationId: string;
-  seekerStartStationId: string;
+  seekerStartStationId: string | null;
   totalGameMinutes: number;
   gameResult: 'seeker_wins' | 'hider_wins';
+  playerHistory?: TravelHistoryEntry[];
+  playerStartStationId?: string | null;
+  playerRole?: 'hider' | 'seeker';
 }
 
 // --- Particle system for end-of-replay effects ---
@@ -235,6 +238,9 @@ export default function ReplayMiniMap({
   seekerStartStationId,
   totalGameMinutes,
   gameResult,
+  playerHistory = [],
+  playerStartStationId,
+  playerRole = 'hider',
 }: ReplayMiniMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -252,13 +258,20 @@ export default function ReplayMiniMap({
   const connections = useMemo(() => getConnections(), []);
   const stationMap = useMemo(() => getStations(), []);
 
-  // Compute bounds for the route + hider + start
+  // Compute bounds for all routes + hider + starts
   const bounds = useMemo(() => {
     const lngs: number[] = [];
     const lats: number[] = [];
 
-    const start = stationMap[seekerStartStationId];
-    if (start) { lngs.push(start.lng); lats.push(start.lat); }
+    if (seekerStartStationId) {
+      const start = stationMap[seekerStartStationId];
+      if (start) { lngs.push(start.lng); lats.push(start.lat); }
+    }
+
+    if (playerStartStationId) {
+      const pStart = stationMap[playerStartStationId];
+      if (pStart) { lngs.push(pStart.lng); lats.push(pStart.lat); }
+    }
 
     const hider = stationMap[hiderStationId];
     if (hider) { lngs.push(hider.lng); lats.push(hider.lat); }
@@ -270,12 +283,19 @@ export default function ReplayMiniMap({
       if (to) { lngs.push(to.lng); lats.push(to.lat); }
     }
 
+    for (const entry of playerHistory) {
+      const from = stationMap[entry.fromStationId];
+      const to = stationMap[entry.toStationId];
+      if (from) { lngs.push(from.lng); lats.push(from.lat); }
+      if (to) { lngs.push(to.lng); lats.push(to.lat); }
+    }
+
     if (lngs.length === 0) return null;
     return new mapboxgl.LngLatBounds(
       [Math.min(...lngs), Math.min(...lats)],
       [Math.max(...lngs), Math.max(...lats)],
     );
-  }, [history, hiderStationId, seekerStartStationId, stationMap]);
+  }, [history, playerHistory, hiderStationId, seekerStartStationId, playerStartStationId, stationMap]);
 
   // Initialize map
   useEffect(() => {
@@ -382,6 +402,99 @@ export default function ReplayMiniMap({
         },
       });
 
+      // Player trail (gold, for hider route or player-as-seeker)
+      map.addSource('player-trail', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'player-trail-glow',
+        type: 'line',
+        source: 'player-trail',
+        paint: {
+          'line-color': playerRole === 'hider' ? '#f59e0b' : '#ef4444',
+          'line-opacity': 0.3,
+          'line-width': 6,
+          'line-blur': 4,
+        },
+      });
+
+      map.addLayer({
+        id: 'player-trail-line',
+        type: 'line',
+        source: 'player-trail',
+        paint: {
+          'line-color': playerRole === 'hider' ? '#f59e0b' : '#ef4444',
+          'line-opacity': 0.9,
+          'line-width': 2.5,
+        },
+      });
+
+      // Player dot (animated)
+      map.addSource('player-dot', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'player-dot-glow',
+        type: 'circle',
+        source: 'player-dot',
+        paint: {
+          'circle-radius': 10,
+          'circle-color': playerRole === 'hider' ? '#f59e0b' : '#ef4444',
+          'circle-opacity': 0.3,
+          'circle-blur': 0.5,
+        },
+      });
+
+      map.addLayer({
+        id: 'player-dot-circle',
+        type: 'circle',
+        source: 'player-dot',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': playerRole === 'hider' ? '#f59e0b' : '#ef4444',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+
+      // Player start marker
+      if (playerStartStationId) {
+        const playerStartStation = stationMap[playerStartStationId];
+        if (playerStartStation) {
+          map.addSource('player-start-marker', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Point',
+                  coordinates: [playerStartStation.lng, playerStartStation.lat],
+                },
+              }],
+            },
+          });
+
+          map.addLayer({
+            id: 'player-start-marker-dot',
+            type: 'circle',
+            source: 'player-start-marker',
+            paint: {
+              'circle-radius': 4,
+              'circle-color': '#ffffff',
+              'circle-stroke-color': playerRole === 'hider' ? '#f59e0b' : '#ef4444',
+              'circle-stroke-width': 1.5,
+              'circle-opacity': 0.8,
+            },
+          });
+        }
+      }
+
       // Hider marker (green dot)
       const hiderStation = stationMap[hiderStationId];
       if (hiderStation) {
@@ -425,67 +538,71 @@ export default function ReplayMiniMap({
         });
       }
 
-      // Start marker (small white dot)
-      const startStation = stationMap[seekerStartStationId];
-      if (startStation) {
-        map.addSource('start-marker', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'Point',
-                coordinates: [startStation.lng, startStation.lat],
-              },
-            }],
-          },
-        });
+      // Seeker start marker + animated dot (only when player is hider, to show AI seeker route)
+      if (playerRole === 'hider' && seekerStartStationId) {
+        const startStation = stationMap[seekerStartStationId];
+        if (startStation) {
+          map.addSource('start-marker', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Point',
+                  coordinates: [startStation.lng, startStation.lat],
+                },
+              }],
+            },
+          });
 
-        map.addLayer({
-          id: 'start-marker-dot',
-          type: 'circle',
-          source: 'start-marker',
-          paint: {
-            'circle-radius': 4,
-            'circle-color': '#ffffff',
-            'circle-stroke-color': '#ef4444',
-            'circle-stroke-width': 1.5,
-            'circle-opacity': 0.8,
-          },
-        });
+          map.addLayer({
+            id: 'start-marker-dot',
+            type: 'circle',
+            source: 'start-marker',
+            paint: {
+              'circle-radius': 4,
+              'circle-color': '#ffffff',
+              'circle-stroke-color': '#ef4444',
+              'circle-stroke-width': 1.5,
+              'circle-opacity': 0.8,
+            },
+          });
+        }
       }
 
-      // Seeker dot (animated red circle)
+      // Seeker dot (animated red circle — for AI seeker when player is hider)
       map.addSource('seeker-dot', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
 
-      map.addLayer({
-        id: 'seeker-dot-glow',
-        type: 'circle',
-        source: 'seeker-dot',
-        paint: {
-          'circle-radius': 10,
-          'circle-color': '#ef4444',
-          'circle-opacity': 0.3,
-          'circle-blur': 0.5,
-        },
-      });
+      if (playerRole === 'hider') {
+        map.addLayer({
+          id: 'seeker-dot-glow',
+          type: 'circle',
+          source: 'seeker-dot',
+          paint: {
+            'circle-radius': 10,
+            'circle-color': '#ef4444',
+            'circle-opacity': 0.3,
+            'circle-blur': 0.5,
+          },
+        });
 
-      map.addLayer({
-        id: 'seeker-dot-circle',
-        type: 'circle',
-        source: 'seeker-dot',
-        paint: {
-          'circle-radius': 5,
-          'circle-color': '#ef4444',
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2,
-        },
-      });
+        map.addLayer({
+          id: 'seeker-dot-circle',
+          type: 'circle',
+          source: 'seeker-dot',
+          paint: {
+            'circle-radius': 5,
+            'circle-color': '#ef4444',
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2,
+          },
+        });
+      }
 
       // Fit bounds
       if (bounds) {
@@ -507,37 +624,70 @@ export default function ReplayMiniMap({
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
-    const pos = getPositionAtTime(history, time, seekerStartStationId, stationMap);
-    const trail = getTrailCoordsAtTime(history, time, seekerStartStationId, stationMap);
+    // Update player trail and dot
+    if (playerHistory.length > 0 && playerStartStationId) {
+      const playerPos = getPositionAtTime(playerHistory, time, playerStartStationId, stationMap);
+      const playerTrail = getTrailCoordsAtTime(playerHistory, time, playerStartStationId, stationMap);
 
-    // Update seeker dot
-    const dotSource = map.getSource('seeker-dot') as mapboxgl.GeoJSONSource | undefined;
-    if (dotSource) {
-      dotSource.setData({
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'Point', coordinates: pos },
-        }],
-      });
+      const playerDotSource = map.getSource('player-dot') as mapboxgl.GeoJSONSource | undefined;
+      if (playerDotSource) {
+        playerDotSource.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: playerPos },
+          }],
+        });
+      }
+
+      const playerTrailSource = map.getSource('player-trail') as mapboxgl.GeoJSONSource | undefined;
+      if (playerTrailSource && playerTrail.length >= 2) {
+        playerTrailSource.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: playerTrail },
+          }],
+        });
+      } else if (playerTrailSource) {
+        playerTrailSource.setData({ type: 'FeatureCollection', features: [] });
+      }
     }
 
-    // Update trail
-    const trailSource = map.getSource('seeker-trail') as mapboxgl.GeoJSONSource | undefined;
-    if (trailSource && trail.length >= 2) {
-      trailSource.setData({
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'LineString', coordinates: trail },
-        }],
-      });
-    } else if (trailSource) {
-      trailSource.setData({ type: 'FeatureCollection', features: [] });
+    // Update seeker trail and dot (AI seeker route, shown when player is hider)
+    if (seekerStartStationId && history.length > 0) {
+      const pos = getPositionAtTime(history, time, seekerStartStationId, stationMap);
+      const trail = getTrailCoordsAtTime(history, time, seekerStartStationId, stationMap);
+
+      const dotSource = map.getSource('seeker-dot') as mapboxgl.GeoJSONSource | undefined;
+      if (dotSource) {
+        dotSource.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: pos },
+          }],
+        });
+      }
+
+      const trailSource = map.getSource('seeker-trail') as mapboxgl.GeoJSONSource | undefined;
+      if (trailSource && trail.length >= 2) {
+        trailSource.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: trail },
+          }],
+        });
+      } else if (trailSource) {
+        trailSource.setData({ type: 'FeatureCollection', features: [] });
+      }
     }
-  }, [history, seekerStartStationId, stationMap, mapLoaded]);
+  }, [history, playerHistory, seekerStartStationId, playerStartStationId, stationMap, mapLoaded]);
 
   // Animation loop
   useEffect(() => {
@@ -604,7 +754,13 @@ export default function ReplayMiniMap({
       effectLngLat = hider ? [hider.lng, hider.lat] : [0, 0];
     } else {
       // Fizzle at the seeker's final position
-      effectLngLat = getPositionAtTime(history, totalGameMinutes, seekerStartStationId, stationMap);
+      if (seekerStartStationId && history.length > 0) {
+        effectLngLat = getPositionAtTime(history, totalGameMinutes, seekerStartStationId, stationMap);
+      } else if (playerStartStationId && playerHistory.length > 0) {
+        effectLngLat = getPositionAtTime(playerHistory, totalGameMinutes, playerStartStationId, stationMap);
+      } else {
+        effectLngLat = [0, 0];
+      }
     }
 
     const point = map.project(effectLngLat as [number, number]);
@@ -647,7 +803,7 @@ export default function ReplayMiniMap({
     return () => {
       if (particleRafRef.current) cancelAnimationFrame(particleRafRef.current);
     };
-  }, [replayTime, totalGameMinutes, gameResult, hiderStationId, seekerStartStationId, history, stationMap]);
+  }, [replayTime, totalGameMinutes, gameResult, hiderStationId, seekerStartStationId, playerStartStationId, history, playerHistory, stationMap]);
 
   // Reset effect state when seeking back
   useEffect(() => {

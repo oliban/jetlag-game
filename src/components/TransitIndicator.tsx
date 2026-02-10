@@ -114,6 +114,18 @@ export default function TransitIndicator({
           : <>{' '}— Arriving in {formatDuration(playerTransit.arrivalTime - clock.gameMinutes)}</>
         }
       </p>
+      {/* Delay banner */}
+      {playerTransit.delayMinutes != null && playerTransit.delayMinutes > 0 && (
+        <p className="text-xs text-orange-400 font-medium mt-1">
+          DELAYED +{Math.round(playerTransit.delayMinutes)}m
+        </p>
+      )}
+      {/* Accident banner */}
+      {playerTransit.accidentStalled && (
+        <p className="text-xs text-red-400 font-bold mt-1 animate-pulse">
+          ACCIDENT — Train stopped
+        </p>
+      )}
       {canGetOff && (
         <button
           onClick={getOffAtNextStation}
