@@ -6,9 +6,10 @@ import SetupScreen from './components/SetupScreen';
 import DebugPanel from './components/DebugPanel';
 import RoundEndScreen from './components/RoundEndScreen';
 import DepartureBoardModal from './components/DepartureBoardModal';
+import MobileGamePanel from './components/MobileGamePanel';
 import { useGameStore } from './store/gameStore';
 import { getStations } from './data/graph';
-import { formatDuration } from './engine/gameLoop';
+import { formatDuration, formatGameTime } from './engine/gameLoop';
 
 function App() {
   const phase = useGameStore((s) => s.phase);
@@ -123,51 +124,80 @@ function App() {
     }
   }, [playerRole, phase, clock.gameMinutes, setGameResult, transitionPhase]);
 
+  const aiStatusIndicator = playerRole === 'hider' && phase === 'seeking' && !gameResult && (() => {
+    const stations = getStations();
+    let dotColor = 'bg-gray-500';
+    let label = 'Seeker idle';
+
+    if (isAISeeking) {
+      dotColor = seekerMode === 'consensus' ? 'bg-purple-400' : 'bg-red-400';
+      label = seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...';
+    } else if (seekerTransit) {
+      const toName = stations?.[seekerTransit.toStationId]?.name ?? seekerTransit.toStationId;
+      const waiting = clock.gameMinutes < seekerTransit.departureTime;
+      if (waiting) {
+        dotColor = 'bg-yellow-400';
+        const waitLeft = Math.max(0, Math.ceil(seekerTransit.departureTime - clock.gameMinutes));
+        label = `Waiting for train to ${toName} — departs in ${formatDuration(waitLeft)}`;
+      } else {
+        dotColor = 'bg-blue-400';
+        const minsLeft = Math.max(0, Math.ceil(seekerTransit.arrivalTime - clock.gameMinutes));
+        label = `In transit to ${toName} — ${formatDuration(minsLeft)}`;
+      }
+    } else if (seekerNextActionTime > clock.gameMinutes) {
+      dotColor = 'bg-gray-400';
+      const minsLeft = Math.max(0, Math.ceil(seekerNextActionTime - clock.gameMinutes));
+      label = `Waiting for next action — ${formatDuration(minsLeft)}`;
+    }
+
+    return { dotColor, label };
+  })();
+
   return (
-    <div className="w-full h-screen relative">
-      <GameMap />
-      <Header />
-      <Sidebar />
-      <DebugPanel />
-      <DepartureBoardModal />
-      <SetupScreen />
-      {phase === 'round_end' && <RoundEndScreen />}
+    <>
+      {/* Desktop layout */}
+      <div className="hidden md:block w-full h-screen relative">
+        <GameMap />
+        <Header />
+        <Sidebar />
+        <DebugPanel />
+        <DepartureBoardModal />
+        <SetupScreen />
+        {phase === 'round_end' && <RoundEndScreen />}
 
-      {/* AI status indicator — always visible during seeking phase when player is hider */}
-      {playerRole === 'hider' && phase === 'seeking' && !gameResult && (() => {
-        const stations = getStations();
-        let dotColor = 'bg-gray-500';
-        let label = 'Seeker idle';
-
-        if (isAISeeking) {
-          dotColor = seekerMode === 'consensus' ? 'bg-purple-400' : 'bg-red-400';
-          label = seekerMode === 'consensus' ? 'Seekers deliberating...' : 'AI is thinking...';
-        } else if (seekerTransit) {
-          const toName = stations?.[seekerTransit.toStationId]?.name ?? seekerTransit.toStationId;
-          const waiting = clock.gameMinutes < seekerTransit.departureTime;
-          if (waiting) {
-            dotColor = 'bg-yellow-400';
-            const waitLeft = Math.max(0, Math.ceil(seekerTransit.departureTime - clock.gameMinutes));
-            label = `Waiting for train to ${toName} — departs in ${formatDuration(waitLeft)}`;
-          } else {
-            dotColor = 'bg-blue-400';
-            const minsLeft = Math.max(0, Math.ceil(seekerTransit.arrivalTime - clock.gameMinutes));
-            label = `In transit to ${toName} — ${formatDuration(minsLeft)}`;
-          }
-        } else if (seekerNextActionTime > clock.gameMinutes) {
-          dotColor = 'bg-gray-400';
-          const minsLeft = Math.max(0, Math.ceil(seekerNextActionTime - clock.gameMinutes));
-          label = `Waiting for next action — ${formatDuration(minsLeft)}`;
-        }
-
-        return (
+        {/* AI status indicator */}
+        {aiStatusIndicator && (
           <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-full border border-gray-700 flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${dotColor} animate-pulse`} />
-            <span className="text-sm text-gray-300">{label}</span>
+            <div className={`w-2 h-2 rounded-full ${aiStatusIndicator.dotColor} animate-pulse`} />
+            <span className="text-sm text-gray-300">{aiStatusIndicator.label}</span>
           </div>
-        );
-      })()}
-    </div>
+        )}
+      </div>
+
+      {/* Mobile layout */}
+      <div className="md:hidden flex flex-col h-screen">
+        <Header />
+        <div className="flex-1 relative min-h-0 max-h-[55vh]">
+          <GameMap />
+          {/* Floating clock overlay */}
+          {phase !== 'setup' && (
+            <div className="absolute top-2 left-2 z-20 bg-[#0a1a3a]/90 backdrop-blur px-3 py-1 rounded-lg border border-[#1a3a6a]/60">
+              <span className="font-mono text-lg text-white">{formatGameTime(clock.gameMinutes)}</span>
+            </div>
+          )}
+          {/* AI status indicator */}
+          {aiStatusIndicator && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-gray-900/90 backdrop-blur px-4 py-2 rounded-full border border-gray-700 flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${aiStatusIndicator.dotColor} animate-pulse`} />
+              <span className="text-sm text-gray-300">{aiStatusIndicator.label}</span>
+            </div>
+          )}
+        </div>
+        <MobileGamePanel />
+        <SetupScreen />
+        {phase === 'round_end' && <RoundEndScreen />}
+      </div>
+    </>
   );
 }
 

@@ -693,7 +693,7 @@ export default function ReplayMiniMap({
 
   return (
     <div>
-      <div className="relative" style={{ height: 280 }}>
+      <div className="relative h-[200px] md:h-[280px]">
         <div
           ref={mapContainer}
           className="w-full h-full rounded-lg border border-[#1a3a6a]/40 overflow-hidden"

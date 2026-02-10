@@ -89,9 +89,11 @@ export interface GameStore {
 
   // UI state
   hoveredRadarRadius: number | null;
+  cameraFollow: boolean;
 
   // Actions
   setHoveredRadarRadius: (radius: number | null) => void;
+  toggleCameraFollow: () => void;
   startGame: (seedOrRole?: number | 'hider' | 'seeker', seed?: number) => void;
   travelTo: (stationId: string) => void;
   settleHere: () => void;
@@ -192,8 +194,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // UI state
   hoveredRadarRadius: null,
+  cameraFollow: false,
 
   setHoveredRadarRadius: (radius: number | null) => set({ hoveredRadarRadius: radius }),
+  toggleCameraFollow: () => set((s) => ({ cameraFollow: !s.cameraFollow })),
 
   startGame: (seedOrRole?: number | 'hider' | 'seeker', seed?: number) => {
     // Parse arguments: startGame(), startGame(seed), startGame('seeker'), startGame('seeker', seed)

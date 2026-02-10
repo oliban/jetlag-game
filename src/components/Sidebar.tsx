@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { getStations } from '../data/graph';
 import { QUESTION_POOL } from '../questions/questionPool';
@@ -24,7 +25,8 @@ const QUESTION_ICONS: Record<string, string> = {
   'prec-name-am': 'Aa',
 };
 
-export default function Sidebar() {
+export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
+  const [previewingRadar, setPreviewingRadar] = useState<string | null>(null);
   const phase = useGameStore((s) => s.phase);
   const playerRole = useGameStore((s) => s.playerRole);
   const playerStationId = useGameStore((s) => s.playerStationId);
@@ -55,9 +57,12 @@ export default function Sidebar() {
   const currentStation = stations[playerStationId];
   const seekerStation = seekerStationId ? stations[seekerStationId] : null;
 
-  // Seeker mode sidebar
+  const qBtnClass = mobile
+    ? 'w-full flex items-start gap-1.5 text-left px-3 py-2.5 text-sm rounded border'
+    : 'w-full flex items-start gap-1.5 text-left px-2 py-1 text-xs rounded border';
+
+  // Seeker mode content
   if (playerRole === 'seeker' && phase === 'seeking') {
-    // Candidate stations matching all constraints, excluding visited
     const candidates = Object.entries(stations).filter(([id, st]) =>
       !visitedStations.has(id) &&
       stationMatchesConstraints(
@@ -67,7 +72,6 @@ export default function Sidebar() {
     );
     const candidateCount = candidates.length;
 
-    // Check which questions have been asked
     const askedQuestionIds = new Set(
       questionsAsked
         .map((q) => QUESTION_POOL.find((p) => p.text === q.question)?.id)
@@ -77,14 +81,18 @@ export default function Sidebar() {
     const inTransit = !!playerTransit;
 
     return (
-      <div className="absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh] overflow-y-auto">
-        {/* Your Station */}
-        <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
-        <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
-        <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+      <>
+        {/* Your Station — shown in MobileStatusBar on mobile */}
+        {!mobile && (
+          <>
+            <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
+            <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
+            <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+          </>
+        )}
 
-        {/* Transit indicator */}
-        {inTransit && playerTransit && (
+        {/* Transit indicator — shown in MobileStatusBar on mobile */}
+        {!mobile && inTransit && playerTransit && (
           <TransitIndicator
             playerTransit={playerTransit}
             clock={clock}
@@ -95,27 +103,29 @@ export default function Sidebar() {
           />
         )}
 
-        {/* Coin budget */}
-        {coinBudget && (
+        {/* Coin budget — in status bar on mobile */}
+        {!mobile && coinBudget && (
           <div className="text-sm text-[#ffbf40] mb-2">
             Coins: {coinBudget.remaining}/{coinBudget.total}
           </div>
         )}
 
-        {/* Candidates */}
-        <div className="text-sm text-cyan-400 mb-3">
-          <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining</p>
-          {candidateCount > 0 && candidateCount < 6 && (
-            <ul className="mt-1 text-xs text-cyan-300/80 space-y-0.5">
-              {candidates.map(([id, st]) => (
-                <li key={id}>• {st.name}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {/* Candidates — in status bar on mobile */}
+        {!mobile && (
+          <div className="text-sm text-cyan-400 mb-3">
+            <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining</p>
+            {candidateCount > 0 && candidateCount < 6 && (
+              <ul className="mt-1 text-xs text-cyan-300/80 space-y-0.5">
+                {candidates.map(([id, st]) => (
+                  <li key={id}>• {st.name}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Ask Question */}
-        <div className="border-t border-[#1a3a6a]/40 pt-4 mt-4">
+        <div className={mobile ? '' : 'border-t border-[#1a3a6a]/40 pt-4 mt-4'}>
           <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">Ask Question</h3>
           <div className="space-y-2">
             {QUESTION_POOL.map((q) => {
@@ -172,13 +182,27 @@ export default function Sidebar() {
                 );
               }
 
+              const isRadar = q.category === 'radar' && !!q.param;
+              const isPreviewing = mobile && isRadar && previewingRadar === q.id;
+
               return (
                 <button
                   key={q.id}
-                  onClick={() => { setHoveredRadarRadius(null); seekerAskQuestion(q.id); }}
-                  onMouseEnter={() => q.category === 'radar' && q.param && setHoveredRadarRadius(q.param)}
-                  onMouseLeave={() => q.category === 'radar' && setHoveredRadarRadius(null)}
-                  className={`w-full flex items-start gap-1.5 text-left px-2 py-1 text-xs rounded border ${cat.border} ${cat.bg} hover:brightness-125 transition-all`}
+                  onClick={() => {
+                    if (mobile && isRadar && previewingRadar !== q.id) {
+                      // First tap: show preview
+                      setPreviewingRadar(q.id);
+                      setHoveredRadarRadius(q.param!);
+                      return;
+                    }
+                    // Second tap (or non-radar / desktop): ask question
+                    setPreviewingRadar(null);
+                    setHoveredRadarRadius(null);
+                    seekerAskQuestion(q.id);
+                  }}
+                  onPointerEnter={() => !mobile && isRadar && setHoveredRadarRadius(q.param!)}
+                  onPointerLeave={() => !mobile && isRadar && setHoveredRadarRadius(null)}
+                  className={`${qBtnClass} ${cat.border} ${cat.bg} hover:brightness-125 active:brightness-125 transition-all ${isPreviewing ? 'ring-1 ring-green-400' : ''}`}
                 >
                   <span className={`${cat.color} shrink-0 w-4 text-center font-bold`}>{icon}</span>
                   <span className="text-white min-w-0">{q.text} <span className="text-[#ffbf40]/80">({cost})</span></span>
@@ -187,50 +211,53 @@ export default function Sidebar() {
             })}
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  // Hider mode sidebar
+  // Hider mode content
   return (
-    <div className="absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px]">
-      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
-      <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
-      <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+    <>
+      {/* Station + transit + hiding time — shown in MobileStatusBar on mobile */}
+      {!mobile && (
+        <>
+          <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
+          <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
+          <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
 
-      {/* Transit indicator for hider */}
-      {playerTransit && (
-        <TransitIndicator
-          playerTransit={playerTransit}
-          clock={clock}
-          stations={stations}
-          getOffAtNextStation={getOffAtNextStation}
-          stayOnTrain={stayOnTrain}
-          queuedRoute={queuedRoute}
-        />
+          {playerTransit && (
+            <TransitIndicator
+              playerTransit={playerTransit}
+              clock={clock}
+              stations={stations}
+              getOffAtNextStation={getOffAtNextStation}
+              stayOnTrain={stayOnTrain}
+              queuedRoute={queuedRoute}
+            />
+          )}
+
+          {phase === 'hiding' && (() => {
+            const HIDING_TIME_LIMIT = 240;
+            const timeLeft = Math.max(0, Math.ceil(HIDING_TIME_LIMIT - clock.gameMinutes));
+            const onTheTrain = playerTransit && clock.gameMinutes >= playerTransit.departureTime;
+            return (
+              <>
+                <div className="text-sm text-gray-400 mb-2">
+                  Time to hide: <span className={`font-mono ${timeLeft <= 30 ? 'text-red-400 font-bold' : 'text-white'}`}>{formatDuration(timeLeft)}</span>
+                </div>
+                {!onTheTrain && (
+                  <button
+                    onClick={() => { settleHere(); setTimeout(() => startSeeking(), 50); }}
+                    className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-500 text-white rounded text-sm font-medium transition-colors shadow-md shadow-emerald-500/20"
+                  >
+                    Hide Here — Start Seeking
+                  </button>
+                )}
+              </>
+            );
+          })()}
+        </>
       )}
-
-      {/* Hiding phase: time remaining + hide button */}
-      {phase === 'hiding' && (() => {
-        const HIDING_TIME_LIMIT = 240; // 4 game-hours
-        const timeLeft = Math.max(0, Math.ceil(HIDING_TIME_LIMIT - clock.gameMinutes));
-        const onTheTrain = playerTransit && clock.gameMinutes >= playerTransit.departureTime;
-        return (
-          <>
-            <div className="text-sm text-gray-400 mb-2">
-              Time to hide: <span className={`font-mono ${timeLeft <= 30 ? 'text-red-400 font-bold' : 'text-white'}`}>{formatDuration(timeLeft)}</span>
-            </div>
-            {!onTheTrain && (
-              <button
-                onClick={() => { settleHere(); setTimeout(() => startSeeking(), 50); }}
-                className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium transition-colors shadow-md shadow-emerald-500/20"
-              >
-                Hide Here — Start Seeking
-              </button>
-            )}
-          </>
-        );
-      })()}
 
       {phase === 'seeking' && (
         <div className="border-t border-[#1a3a6a]/40 pt-4 mt-4 space-y-2">
@@ -255,7 +282,7 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* Seeker status — always show what the AI is doing */}
+          {/* Seeker status */}
           {(() => {
             if (isAISeeking) {
               return (
@@ -318,6 +345,22 @@ export default function Sidebar() {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+export default function Sidebar() {
+  const phase = useGameStore((s) => s.phase);
+  const playerRole = useGameStore((s) => s.playerRole);
+  const playerStationId = useGameStore((s) => s.playerStationId);
+
+  if (phase === 'setup' || !playerStationId) return null;
+
+  const isSeeker = playerRole === 'seeker' && phase === 'seeking';
+
+  return (
+    <div className={`hidden md:block absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] ${isSeeker ? 'max-h-[80vh] overflow-y-auto' : ''}`}>
+      <SidebarContent />
     </div>
   );
 }

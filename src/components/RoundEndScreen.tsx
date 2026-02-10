@@ -23,7 +23,7 @@ export default function RoundEndScreen() {
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[#0a1a3a] border border-[#1a3a6a]/60 rounded-xl p-8 max-w-2xl w-full mx-4 shadow-2xl text-center animate-scale-in">
+      <div className="bg-[#0a1a3a] border border-[#1a3a6a]/60 rounded-xl p-5 md:p-8 max-w-2xl w-full mx-4 shadow-2xl text-center animate-scale-in max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Result icon */}
         <div className={`rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center ${playerWon ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
           <span className={`text-5xl ${seekerWon ? 'animate-bounce' : ''}`}>
@@ -33,7 +33,7 @@ export default function RoundEndScreen() {
 
         {/* Title */}
         <h2
-          className={`text-3xl font-bold mb-2 ${
+          className={`text-xl md:text-3xl font-bold mb-2 ${
             playerWon ? 'text-emerald-400' : 'text-rose-400'
           }`}
         >
@@ -99,7 +99,7 @@ export default function RoundEndScreen() {
         {/* Play again */}
         <button
           onClick={() => transitionPhase('setup')}
-          className="w-full px-4 py-3 bg-[#ffbf40] hover:bg-[#ffbf40]/90 text-[#061e45] font-bold rounded-lg transition-colors text-lg"
+          className="w-full px-4 py-3 bg-[#ffbf40] hover:bg-[#ffbf40]/90 active:bg-[#ffbf40]/90 text-[#061e45] font-bold rounded-lg transition-colors text-lg"
         >
           Play Again
         </button>

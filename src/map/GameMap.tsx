@@ -57,6 +57,7 @@ export default function GameMap() {
       zoom: 4,
       minZoom: 3,
       maxZoom: 10,
+      attributionControl: false,
     });
 
     mapRef.current = map;
@@ -398,7 +399,20 @@ export default function GameMap() {
     let markerPos: [number, number] = [station.lng, station.lat];
     if (transitState && clockNow >= transitState.departureTime) {
       const trainPos = findTransitTrainPosition(transitState, clockNow);
-      if (trainPos) markerPos = trainPos;
+      if (trainPos) {
+        markerPos = trainPos;
+      } else {
+        const stationMap = getStations();
+        const from = stationMap[transitState.fromStationId];
+        const to = stationMap[transitState.toStationId];
+        if (from && to) {
+          const segEnd = transitState.nextArrivalTime ?? transitState.arrivalTime;
+          const segDuration = segEnd - transitState.segmentDepartureTime;
+          const elapsed = clockNow - transitState.segmentDepartureTime;
+          const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+          markerPos = [from.lng + (to.lng - from.lng) * t, from.lat + (to.lat - from.lat) * t];
+        }
+      }
     }
 
     playerMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
@@ -426,20 +440,66 @@ export default function GameMap() {
     if (pos) {
       playerMarkerRef.current.setLngLat(pos);
     } else {
-      // Fallback: linearly interpolate between origin and destination
+      // Fallback: interpolate current segment (from → to) using segmentDepartureTime
       const stationMap = getStations();
       const from = stationMap[playerTransit.fromStationId];
       const to = stationMap[playerTransit.toStationId];
       if (from && to) {
-        const duration = playerTransit.arrivalTime - playerTransit.departureTime;
-        const elapsed = clock.gameMinutes - playerTransit.departureTime;
-        const t = duration > 0 ? Math.min(1, Math.max(0, elapsed / duration)) : 1;
+        const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+        const segDuration = segEnd - playerTransit.segmentDepartureTime;
+        const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+        const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
         const lng = from.lng + (to.lng - from.lng) * t;
         const lat = from.lat + (to.lat - from.lat) * t;
         playerMarkerRef.current.setLngLat([lng, lat]);
       }
     }
   }, [playerTransit, clock.gameMinutes]);
+
+  // Camera follow player
+  const cameraFollow = useGameStore((s) => s.cameraFollow);
+
+  // Toggle scroll zoom mode: zoom around map center (= player) when locked
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    if (cameraFollow) {
+      map.scrollZoom.enable({ around: 'center' });
+    } else {
+      map.scrollZoom.enable();
+    }
+  }, [cameraFollow, mapLoaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !cameraFollow || !playerStationId) return;
+
+    const stationMap = getStations();
+    const station = stationMap[playerStationId];
+    if (!station) return;
+
+    let center: [number, number] = [station.lng, station.lat];
+
+    if (playerTransit && clock.gameMinutes >= playerTransit.departureTime) {
+      const pos = findTransitTrainPosition(playerTransit, clock.gameMinutes);
+      if (pos) {
+        center = pos;
+      } else {
+        const from = stationMap[playerTransit.fromStationId];
+        const to = stationMap[playerTransit.toStationId];
+        if (from && to) {
+          const segEnd = playerTransit.nextArrivalTime ?? playerTransit.arrivalTime;
+          const segDuration = segEnd - playerTransit.segmentDepartureTime;
+          const elapsed = clock.gameMinutes - playerTransit.segmentDepartureTime;
+          const t = segDuration > 0 ? Math.min(1, Math.max(0, elapsed / segDuration)) : 0;
+          center = [from.lng + (to.lng - from.lng) * t, from.lat + (to.lat - from.lat) * t];
+        }
+      }
+    }
+
+    map.setCenter(center);
+  }, [cameraFollow, playerStationId, playerTransit, clock.gameMinutes, mapLoaded]);
 
   // Highlight adjacent connections (hiding phase + seeker seeking phase when not in transit)
   useEffect(() => {
@@ -706,12 +766,12 @@ export default function GameMap() {
       <div ref={mapContainer} className="w-full h-full" />
 
       {popup && (
-        <div className="absolute top-14 right-4 bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl max-w-xs border border-gray-700/60 z-20">
+        <div className="absolute bottom-2 left-2 right-2 md:top-14 md:right-4 md:left-auto md:bottom-auto md:max-w-xs bg-gray-900/95 backdrop-blur text-white p-4 rounded-lg shadow-xl border border-gray-700/60 z-20">
           <div className="flex justify-between items-start mb-2">
             <h3 className="font-bold text-amber-400 text-lg">{popup.station.name}</h3>
             <button
               onClick={() => setPopup(null)}
-              className="text-gray-400 hover:text-white ml-2 text-xl leading-none"
+              className="text-gray-400 hover:text-white active:text-white ml-2 text-xl leading-none w-11 h-11 flex items-center justify-center -mr-2 -mt-2"
             >
               &times;
             </button>

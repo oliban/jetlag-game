@@ -9,7 +9,6 @@ export default function SetupScreen() {
   const fetchProviderConfig = useGameStore((s) => s.fetchProviderConfig);
 
   const [selectedRole, setSelectedRole] = useState<'hider' | 'seeker' | null>(null);
-  const [hoveredCard, setHoveredCard] = useState<'hider' | 'seeker' | null>(null);
 
   useEffect(() => {
     fetchProviderConfig();
@@ -47,7 +46,7 @@ export default function SetupScreen() {
         background: `radial-gradient(ellipse 50% 40% at 80% 10%, ${gold}1a 0%, transparent 60%)`,
       }} />
 
-      <div className="relative z-10 w-full max-w-[580px] mx-8 setup-card-enter max-h-[calc(100vh-4rem)] overflow-y-auto rounded-2xl" style={{
+      <div className="relative z-10 w-full max-w-[580px] mx-4 md:mx-8 setup-card-enter max-h-[calc(100vh-4rem)] overflow-y-auto rounded-2xl" style={{
         boxShadow: `0 30px 80px -12px rgba(0,0,0,0.5), 0 0 0 1px ${gold}18, 0 0 60px -20px ${gold}20`,
       }}>
         <div className="relative rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, #0f2444 0%, #13243f 100%)' }}>
@@ -55,7 +54,7 @@ export default function SetupScreen() {
           <div className="h-[2px]" style={{ background: `linear-gradient(90deg, transparent 10%, ${gold} 50%, transparent 90%)` }} />
 
           {/* Hero section */}
-          <div className="relative h-64 overflow-hidden">
+          <div className="relative h-40 md:h-64 overflow-hidden">
             <img
               src="/Train%20Chaos.png"
               alt=""
@@ -71,17 +70,17 @@ export default function SetupScreen() {
             }} />
 
             {/* Title over image */}
-            <div className="absolute bottom-0 left-0 right-0 px-10 pb-7">
+            <div className="absolute bottom-0 left-0 right-0 px-5 md:px-10 pb-5 md:pb-7">
               <div className="flex items-center gap-2.5 mb-2">
                 <div className="h-px w-10" style={{ background: `linear-gradient(90deg, ${gold}, transparent)` }} />
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ fontFamily: font, color: gold }}>
                   European Rail Network
                 </p>
               </div>
-              <h1 className="text-[3.2rem] font-black tracking-tight leading-[0.9]" style={{ fontFamily: font, color: '#ffffff' }}>
+              <h1 className="text-[2.4rem] md:text-[3.2rem] font-black tracking-tight leading-[0.9]" style={{ fontFamily: font, color: '#ffffff' }}>
                 Jet Lag
               </h1>
-              <h2 className="text-base font-medium tracking-wide mt-1" style={{ fontFamily: font, color: `${gold}99` }}>
+              <h2 className="text-sm md:text-base font-medium tracking-wide mt-1" style={{ fontFamily: font, color: `${gold}99` }}>
                 Hide &amp; Seek
               </h2>
             </div>
@@ -90,14 +89,14 @@ export default function SetupScreen() {
           {/* Card body */}
           <div>
             {selectedRole === null && (
-              <div className="px-10 pt-5 pb-10">
-                <p className="text-[15px] leading-relaxed mb-8" style={{ fontFamily: font, color: 'rgba(255,255,255,0.55)' }}>
+              <div className="px-5 md:px-10 pt-4 md:pt-5 pb-8 md:pb-10">
+                <p className="text-[13px] md:text-[15px] leading-relaxed mb-6 md:mb-8" style={{ fontFamily: font, color: 'rgba(255,255,255,0.55)' }}>
                   A game of cat and mouse across Europe. Hide from AI seekers
                   or hunt down an AI hider across the rail network.
                 </p>
 
                 {/* Role cards */}
-                <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 md:mb-8">
                   {/* Hider — disabled, coming soon */}
                   <div
                     className="relative text-left rounded-xl overflow-hidden cursor-not-allowed opacity-50"
@@ -131,23 +130,17 @@ export default function SetupScreen() {
                   {/* Seeker — red themed */}
                   <button
                     onClick={() => startGame('seeker')}
-                    onMouseEnter={() => setHoveredCard('seeker')}
-                    onMouseLeave={() => setHoveredCard(null)}
-                    className="group relative text-left rounded-xl overflow-hidden transition-all duration-300"
+                    className="group relative text-left rounded-xl overflow-hidden transition-all duration-300 hover:ring-1 hover:ring-[#e23235] active:ring-1 active:ring-[#e23235]"
                     style={{
-                      background: hoveredCard === 'seeker'
-                        ? `linear-gradient(135deg, ${red}1a 0%, ${red}08 100%)`
-                        : `linear-gradient(135deg, ${red}0a 0%, rgba(255,255,255,0.02) 100%)`,
-                      boxShadow: hoveredCard === 'seeker'
-                        ? `0 0 0 1.5px ${red}, 0 8px 24px -8px ${red}30`
-                        : `0 0 0 1px ${red}20`,
+                      background: `linear-gradient(135deg, ${red}0a 0%, rgba(255,255,255,0.02) 100%)`,
+                      boxShadow: `0 0 0 1px ${red}20`,
                     }}
                   >
                     <div className="p-5">
-                      <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 transition-colors duration-300" style={{
-                        background: hoveredCard === 'seeker' ? `${red}20` : `${red}0d`,
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style={{
+                        background: `${red}0d`,
                       }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hoveredCard === 'seeker' ? red : `${red}80`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={`${red}80`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
                         </svg>
                       </div>
@@ -187,15 +180,13 @@ export default function SetupScreen() {
             )}
 
             {selectedRole === 'hider' && (
-              <div className="px-10 pt-5 pb-10 space-y-6 setup-form-enter">
+              <div className="px-5 md:px-10 pt-4 md:pt-5 pb-8 md:pb-10 space-y-6 setup-form-enter">
                 {/* Back + title */}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setSelectedRole(null)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/10"
                     style={{ background: 'rgba(255,255,255,0.06)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M19 12H5M12 19l-7-7 7-7"/>
@@ -265,7 +256,7 @@ export default function SetupScreen() {
                 <button
                   onClick={handleStart}
                   disabled={!hasAnthropicProvider}
-                  className="w-full py-3.5 rounded-xl font-bold text-[15px] transition-all duration-200"
+                  className="w-full py-3.5 rounded-xl font-bold text-[15px] transition-all duration-200 active:scale-[0.98] hover:brightness-110 active:brightness-110"
                   style={{
                     background: hasAnthropicProvider
                       ? `linear-gradient(135deg, ${gold} 0%, ${goldDark} 100%)`
@@ -276,18 +267,6 @@ export default function SetupScreen() {
                       ? `0 4px 24px -4px ${gold}60, inset 0 1px 0 rgba(255,255,255,0.25)`
                       : 'none',
                     cursor: hasAnthropicProvider ? 'pointer' : 'not-allowed',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (hasAnthropicProvider) {
-                      e.currentTarget.style.boxShadow = `0 8px 32px -4px ${gold}70, inset 0 1px 0 rgba(255,255,255,0.3)`;
-                      e.currentTarget.style.transform = 'translateY(-1px)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (hasAnthropicProvider) {
-                      e.currentTarget.style.boxShadow = `0 4px 24px -4px ${gold}60, inset 0 1px 0 rgba(255,255,255,0.25)`;
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }
                   }}
                 >
                   Start Game

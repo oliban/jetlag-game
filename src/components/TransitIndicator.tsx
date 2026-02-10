@@ -19,6 +19,7 @@ interface TransitIndicatorProps {
   getOffAtNextStation: () => void;
   stayOnTrain: () => void;
   queuedRoute?: { routeId: string; destinationStationId: string; departureTime: number } | null;
+  transitBtnPy?: string;
 }
 
 export default function TransitIndicator({
@@ -28,7 +29,9 @@ export default function TransitIndicator({
   getOffAtNextStation,
   stayOnTrain,
   queuedRoute,
+  transitBtnPy,
 }: TransitIndicatorProps) {
+  const btnPy = transitBtnPy ?? 'py-2 md:py-1';
   // "Missed!" animation state
   const [missedRoute, setMissedRoute] = useState<{ routeId: string; destinationStationId: string } | null>(null);
   const missedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -114,7 +117,7 @@ export default function TransitIndicator({
       {canGetOff && (
         <button
           onClick={getOffAtNextStation}
-          className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-red-400 bg-red-900/30 hover:bg-red-900/50 border border-red-700/50 rounded transition-colors"
+          className={`mt-1.5 w-full px-2 ${btnPy} text-xs font-medium text-red-400 bg-red-900/30 hover:bg-red-900/50 active:bg-red-900/50 border border-red-700/50 rounded transition-colors`}
         >
           {isDwelling ? 'Get off now!' : `Get off at ${stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}`}
         </button>
@@ -122,7 +125,7 @@ export default function TransitIndicator({
       {canStay && (
         <button
           onClick={stayOnTrain}
-          className="mt-1.5 w-full px-2 py-1 text-xs font-medium text-green-400 bg-green-900/30 hover:bg-green-900/50 border border-green-700/50 rounded transition-colors"
+          className={`mt-1.5 w-full px-2 ${btnPy} text-xs font-medium text-green-400 bg-green-900/30 hover:bg-green-900/50 active:bg-green-900/50 border border-green-700/50 rounded transition-colors`}
         >
           Stay on train
         </button>

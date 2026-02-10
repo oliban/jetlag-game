@@ -21,7 +21,7 @@ export default function QuestionLog() {
   const categories: QuestionCategory[] = ['radar', 'relative', 'precision'];
 
   return (
-    <div className="absolute bottom-4 right-4 z-10 w-80">
+    <div className="hidden md:block absolute bottom-4 right-4 z-10 w-80">
       {/* Header */}
       <button
         onClick={() => setCollapsed(!collapsed)}

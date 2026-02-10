@@ -66,7 +66,7 @@ export default function DebugPanel() {
     filter === 'all' ? debugLog : debugLog.filter((e) => e.tool === filter);
 
   return (
-    <div className="absolute top-12 left-4 z-20 w-96 max-h-[70vh] flex flex-col bg-[#061e45]/95 backdrop-blur border border-[#1a3a6a]/60 rounded-lg shadow-xl font-mono text-xs">
+    <div className="hidden md:flex absolute top-12 left-4 z-20 w-96 max-h-[70vh] flex-col bg-[#061e45]/95 backdrop-blur border border-[#1a3a6a]/60 rounded-lg shadow-xl font-mono text-xs">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#1a3a6a]/60">
         <div className="flex items-center gap-2">

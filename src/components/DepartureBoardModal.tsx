@@ -143,6 +143,7 @@ export default function DepartureBoardModal() {
     : undefined;
 
   return (
+    <div className="hidden md:block">
     <div
       ref={modalRef}
       onMouseDown={onMouseDown}
@@ -276,6 +277,175 @@ export default function DepartureBoardModal() {
           );
         })}
       </div>
+    </div>
+    </div>
+  );
+}
+
+export function DepartureBoardMobile() {
+  const phase = useGameStore((s) => s.phase);
+  const playerRole = useGameStore((s) => s.playerRole);
+  const playerStationId = useGameStore((s) => s.playerStationId);
+  const playerTransit = useGameStore((s) => s.playerTransit);
+  const hidingZone = useGameStore((s) => s.hidingZone);
+  const clock = useGameStore((s) => s.clock);
+  const travelViaRoute = useGameStore((s) => s.travelViaRoute);
+  const seekerStationId = useGameStore((s) => s.seekerStationId);
+  const seekerTransit = useGameStore((s) => s.seekerTransit);
+
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  if (phase === 'setup' || phase === 'round_end') return null;
+
+  const stations = getStations();
+
+  const showingSeekerBoard = playerRole === 'hider' && phase === 'seeking' && !!seekerStationId;
+
+  const activeStationId = showingSeekerBoard ? seekerStationId : playerStationId;
+  const activeTransit = showingSeekerBoard ? seekerTransit : playerTransit;
+
+  if (!activeStationId) return null;
+
+  const waitingForDeparture = !!activeTransit && clock.gameMinutes < activeTransit.departureTime;
+  const onTheTrain = !!activeTransit && clock.gameMinutes >= activeTransit.departureTime;
+
+  let boardStationId: string;
+  let boardTime: number;
+  let canTravel: boolean;
+
+  if (onTheTrain && activeTransit) {
+    boardStationId = activeTransit.toStationId;
+    boardTime = activeTransit.nextArrivalTime ?? activeTransit.arrivalTime;
+    const hiderCanTravel = playerRole === 'hider' && phase === 'hiding' && !hidingZone;
+    const seekerCanTravel = playerRole === 'seeker' && phase === 'seeking';
+    canTravel = showingSeekerBoard ? false : (hiderCanTravel || seekerCanTravel);
+  } else {
+    boardStationId = activeStationId;
+    boardTime = clock.gameMinutes;
+    const hiderCanTravel = playerRole === 'hider' && phase === 'hiding' && !hidingZone;
+    const seekerCanTravel = playerRole === 'seeker' && phase === 'seeking';
+    canTravel = showingSeekerBoard ? false : (hiderCanTravel || seekerCanTravel);
+  }
+
+  const boardStation = stations[boardStationId];
+  const departures = getUpcomingDepartures(boardStationId, boardTime, 10);
+
+  if (departures.length === 0) return (
+    <div className="flex items-center justify-center py-8">
+      <span className="text-gray-500 text-sm">No departures</span>
+    </div>
+  );
+
+  const handleBoard = canTravel
+    ? (dep: RouteDeparture, stopStationId: string) => {
+        travelViaRoute(dep.route.id, stopStationId, dep.departureTime);
+      }
+    : undefined;
+
+  return (
+    <div>
+      {/* Station header */}
+      <div className="sticky top-0 bg-[#0c2a52] px-3 py-1 flex justify-between items-center z-10">
+        <span className="text-xs font-bold text-[#ffbf40] uppercase tracking-wider truncate font-mono">
+          {showingSeekerBoard && <span className="text-red-400 mr-1">Seeker</span>}
+          {onTheTrain ? `\u2192 ${boardStation?.name ?? boardStationId}` : (boardStation?.name ?? boardStationId)}
+        </span>
+        <span className="text-[10px] text-gray-400 shrink-0">
+          {onTheTrain ? `arr ${formatGameTime(boardTime)}` : 'Departures'}
+        </span>
+      </div>
+      {/* Column headers - 4 cols */}
+      <div className="grid grid-cols-[3.5rem_1fr_3rem_3rem] px-3 py-1 text-[10px] text-gray-500 uppercase tracking-wide border-b border-[#0c2a52]">
+        <span>Time</span>
+        <span>Route</span>
+        <span className="text-right">Dur</span>
+        <span className="text-right">In</span>
+      </div>
+
+      {/* Departure rows */}
+      {departures.map((dep) => {
+        const routeDesc = formatRouteDesc(dep.remainingStops, stations);
+        const minsUntil = Math.max(0, Math.ceil(dep.departureTime - clock.gameMinutes));
+        const isDwelling = dep.arrivalTime <= clock.gameMinutes && dep.departureTime > clock.gameMinutes;
+        const imminent = !isDwelling && minsUntil <= 5 && minsUntil > 0;
+        const totalDur = dep.remainingStops.length > 0
+          ? Math.round(dep.remainingStops[dep.remainingStops.length - 1].arrivalMin - dep.departureTime)
+          : 0;
+
+        const lastArrival = dep.remainingStops.length > 0
+          ? dep.remainingStops[dep.remainingStops.length - 1].arrivalMin
+          : dep.departureTime;
+        const blocked = playerRole === 'hider' && phase === 'hiding' && lastArrival > HIDING_TIME_LIMIT;
+        const isSelected = waitingForDeparture && activeTransit?.routeId === dep.route.id
+          && activeTransit?.departureTime === dep.departureTime;
+
+        const canExpand = !blocked && dep.remainingStops.length > 0;
+        const rowKey = `${dep.route.id}-${dep.direction}-${dep.departureTime}`;
+        const isExpanded = expandedKey === rowKey;
+
+        return (
+          <div key={rowKey}>
+            <div
+              onClick={canExpand ? () => {
+                setExpandedKey(isExpanded ? null : rowKey);
+              } : undefined}
+              className={`grid grid-cols-[3.5rem_1fr_3rem_3rem] px-3 py-2 border-b border-[#0a1a3a] items-center text-sm ${isSelected ? 'bg-[#ffbf40]/10 border-l-2 border-l-[#ffbf40]' : ''} ${isExpanded ? 'bg-[#0c2a52]/60' : ''} ${imminent && !blocked ? 'animate-pulse' : ''} ${blocked ? 'opacity-40' : ''} ${canExpand ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
+            >
+              <span className={`text-xs tabular-nums font-medium ${blocked ? 'text-gray-600 line-through' : 'text-white'}`}>
+                {formatGameTime(dep.departureTime)}
+              </span>
+              <span className={`text-xs truncate pr-1 ${blocked ? 'text-gray-600 line-through' : 'text-[#ffbf40]'}`} title={routeDesc}>
+                {routeDesc}
+              </span>
+              <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600 line-through' : 'text-gray-500'}`}>
+                {totalDur}m
+              </span>
+              <span className={`text-xs tabular-nums text-right ${blocked ? 'text-gray-600' : isDwelling ? 'text-green-400 font-bold' : imminent ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+                {isDwelling ? 'BRD' : minsUntil === 0 ? 'NOW' : `${minsUntil}m`}
+              </span>
+            </div>
+
+            {/* Expanded stop list */}
+            {isExpanded && (
+              <div className="bg-[#081c3e] ml-5">
+                {dep.remainingStops.map((stop, i) => {
+                  const stopStation = stations[stop.stationId];
+                  const stopName = stopStation?.name ?? stop.stationId;
+                  const durFromDep = Math.round(stop.arrivalMin - dep.departureTime);
+                  const isLast = i === dep.remainingStops.length - 1;
+                  const stopBlocked = playerRole === 'hider' && phase === 'hiding' && stop.arrivalMin > HIDING_TIME_LIMIT;
+                  const stopClickable = handleBoard && !stopBlocked;
+
+                  return (
+                    <div
+                      key={stop.stationId}
+                      onClick={stopClickable ? (e) => {
+                        e.stopPropagation();
+                        handleBoard!(dep, stop.stationId);
+                        setExpandedKey(null);
+                      } : undefined}
+                      className={`flex items-center text-xs ${stopBlocked ? 'opacity-40' : stopClickable ? 'cursor-pointer hover:bg-[#0c2a52]/80 transition-colors' : ''}`}
+                    >
+                      <span className="w-4 flex-shrink-0 text-gray-600 text-center font-mono leading-none">
+                        {isLast ? '\u2514' : '\u251C'}
+                      </span>
+                      <span className={`flex-1 truncate py-2 ${isLast ? 'text-[#ffbf40] font-medium' : 'text-gray-300'}`}>
+                        {stopName}
+                      </span>
+                      <span className="text-gray-500 tabular-nums ml-2 w-12 text-right">
+                        {formatGameTime(stop.arrivalMin)}
+                      </span>
+                      <span className="text-gray-600 tabular-nums ml-2 w-10 text-right pr-3">
+                        {durFromDep}m
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
