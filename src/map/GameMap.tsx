@@ -73,7 +73,6 @@ export default function GameMap() {
       map.addSource('country-boundaries-src', {
         type: 'vector',
         url: 'mapbox://mapbox.country-boundaries-v1',
-        maxzoom: 3,
       });
 
       map.addLayer({
