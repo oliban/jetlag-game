@@ -82,7 +82,7 @@ export default function GameMap() {
         'source-layer': 'country_boundaries',
         filter: [
           'all',
-          ['match', ['get', 'worldview'], ['all', 'US'], true, false],
+          ['any', ['==', ['get', 'worldview'], 'all'], ['in', 'US', ['get', 'worldview']]],
           ['match', ['get', 'iso_3166_1_alpha_3'], ALL_GAME_ISOS, true, false],
         ],
         paint: {
@@ -98,7 +98,7 @@ export default function GameMap() {
         'source-layer': 'country_boundaries',
         filter: [
           'all',
-          ['match', ['get', 'worldview'], ['all', 'US'], true, false],
+          ['any', ['==', ['get', 'worldview'], 'all'], ['in', 'US', ['get', 'worldview']]],
           ['match', ['get', 'iso_3166_1_alpha_3'], ALL_GAME_ISOS, true, false],
         ],
         paint: {

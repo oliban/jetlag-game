@@ -388,7 +388,7 @@ function renderCountryConstraints(map: mapboxgl.Map, eliminatedCodes: string[]):
       'source-layer': 'country_boundaries',
       filter: [
         'all',
-        ['match', ['get', 'worldview'], ['all', 'US'], true, false],
+        ['any', ['==', ['get', 'worldview'], 'all'], ['in', 'US', ['get', 'worldview']]],
         ['match', ['get', 'iso_3166_1_alpha_3'], eliminatedCodes, true, false],
       ],
       paint: {
