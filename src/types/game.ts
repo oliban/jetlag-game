@@ -6,6 +6,12 @@ export interface Station {
   lng: number;
   /** Number of connections - indicates hub importance */
   connections: number;
+  isCoastal: boolean;
+  isMountainous: boolean;
+  isCapital: boolean;
+  hasHostedOlympics: boolean;
+  isAncient: boolean;
+  hasMetro: boolean;
 }
 
 export interface Connection {

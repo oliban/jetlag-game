@@ -5,13 +5,14 @@ import { getStationList, getConnections, getNeighbors, getStations } from '../da
 import { useGameStore } from '../store/gameStore';
 import type { Station } from '../types/game';
 import { renderConstraints } from './constraintRenderer';
+import { stationMatchesConstraints } from '../engine/seekerLoop';
 import { initTrainLayer, updateTrainPositions, initTrainHover, initTrainClick } from './trainRenderer';
 import { initWeatherLayers, updateWeatherZones } from './weatherLayer';
 import { initSmokeLayers, updateSmokePositions } from './smokeRenderer';
 import { logger } from '../engine/logger';
 import { classifyConnection } from '../engine/trainSchedule';
 import { findTransitTrainPosition } from '../engine/transitPosition';
-import { ALL_GAME_ISOS, stationColorMatchExpression, countryFillMatchExpression, countryBorderMatchExpression } from '../theme/colors';
+import { ALL_GAME_ISOS, stationColorMatchExpression, countryFillMatchExpression, countryBorderMatchExpression, COUNTRY_COLORS } from '../theme/colors';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -107,6 +108,25 @@ export default function GameMap() {
           'line-width': 1,
         },
       });
+
+      // Terrain hillshade for mountain visibility
+      map.addSource('mapbox-dem', {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14,
+      });
+      map.addLayer({
+        id: 'hillshade',
+        type: 'hillshade',
+        source: 'mapbox-dem',
+        paint: {
+          'hillshade-exaggeration': 0.5,
+          'hillshade-shadow-color': '#000000',
+          'hillshade-highlight-color': '#2a2a2a',
+          'hillshade-accent-color': '#4b5563',
+        },
+      }, 'country-fills');
 
       // Connection lines — colored by train type
       const lineFeatures = connections.map((c) => {
@@ -725,45 +745,61 @@ export default function GameMap() {
     renderConstraints(map, constraints);
   }, [constraints, mapLoaded]);
 
-  // Update station dots with visited state (red for visited stations)
+  // Update station dots with visited + constraint-eliminated state
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     const source = map.getSource('stations') as mapboxgl.GeoJSONSource;
     if (!source) return;
 
-    // Only show visited coloring during seeking phase
-    if (phase !== 'seeking' || visitedStations.size === 0) {
-      map.setPaintProperty('station-dots', 'circle-color', stationColorMatchExpression());
+    // Only show elimination coloring during seeking phase
+    const hasConstraints = constraints.length > 0;
+    const hasVisited = visitedStations.size > 0;
+    if (phase !== 'seeking' || (!hasVisited && !hasConstraints)) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: stations.map((s) => ({
+          type: 'Feature' as const,
+          properties: {
+            id: s.id, name: s.name, country: s.country, connections: s.connections,
+            dotColor: COUNTRY_COLORS[s.country]?.station ?? '#fbbf24',
+            dotOpacity: 0.9,
+          },
+          geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+        })),
+      });
+      map.setPaintProperty('station-dots', 'circle-color', ['get', 'dotColor']);
+      map.setPaintProperty('station-dots', 'circle-opacity', ['get', 'dotOpacity']);
       return;
     }
 
-    // Update features with visited property
-    const features = stations.map((s) => ({
-      type: 'Feature' as const,
-      properties: {
-        id: s.id,
-        name: s.name,
-        country: s.country,
-        connections: s.connections,
-        visited: visitedStations.has(s.id) ? 1 : 0,
-      },
-      geometry: {
-        type: 'Point' as const,
-        coordinates: [s.lng, s.lat],
-      },
-    }));
+    // Pre-compute color and opacity per station in JavaScript
+    const features = stations.map((s) => {
+      const isVisited = visitedStations.has(s.id);
+      const isEliminated = hasConstraints && !stationMatchesConstraints(s, constraints);
+      const countryColor = COUNTRY_COLORS[s.country]?.station ?? '#fbbf24';
+
+      return {
+        type: 'Feature' as const,
+        properties: {
+          id: s.id,
+          name: s.name,
+          country: s.country,
+          connections: s.connections,
+          dotColor: isVisited || isEliminated ? '#ef4444' : countryColor,
+          dotOpacity: isEliminated && !isVisited ? 0.35 : 0.9,
+        },
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [s.lng, s.lat],
+        },
+      };
+    });
 
     source.setData({ type: 'FeatureCollection', features });
-
-    // Use case expression: visited stations are red, others keep country color
-    map.setPaintProperty('station-dots', 'circle-color', [
-      'case',
-      ['==', ['get', 'visited'], 1],
-      '#ef4444',
-      stationColorMatchExpression(),
-    ] as mapboxgl.Expression);
-  }, [visitedStations, phase, mapLoaded, stations]);
+    map.setPaintProperty('station-dots', 'circle-color', ['get', 'dotColor']);
+    map.setPaintProperty('station-dots', 'circle-opacity', ['get', 'dotOpacity']);
+  }, [visitedStations, constraints, phase, mapLoaded, stations]);
 
   // Update hiding zone circle
   useEffect(() => {

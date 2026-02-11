@@ -1,4 +1,9 @@
 import type { Constraint, CircleConstraint, HalfPlaneConstraint, TextConstraint } from '../engine/constraints';
+import { COUNTRY_DATA } from '../data/countryData';
+import type { CountryInfo } from '../data/countryData';
+import { getStationList } from '../data/graph';
+import { nearestStationDistance } from '../questions/evaluators';
+import type { Station } from '../types/game';
 
 // Bounding box covering all of Europe and surroundings
 const EUROPE_BBOX: [number, number][] = [
@@ -121,6 +126,69 @@ function halfPlaneBoundaryLine(c: HalfPlaneConstraint): GeoJSON.Feature<GeoJSON.
 
 import { COUNTRY_TO_ISO3, ALL_GAME_ISOS } from '../theme/colors';
 
+// Cached stations-by-country lookup
+let _stationsByCountry: Record<string, Station[]> | null = null;
+function getStationsByCountry(): Record<string, Station[]> {
+  if (_stationsByCountry) return _stationsByCountry;
+  _stationsByCountry = {};
+  for (const s of getStationList()) {
+    (_stationsByCountry[s.country] ??= []).push(s);
+  }
+  return _stationsByCountry;
+}
+
+// Cached filtered station lists for thermometer elimination
+let _crCoastal: Station[] | null = null;
+let _crCapital: Station[] | null = null;
+let _crMountainous: Station[] | null = null;
+function getCRCoastal(): Station[] {
+  if (!_crCoastal) _crCoastal = getStationList().filter(s => s.isCoastal);
+  return _crCoastal;
+}
+function getCRCapital(): Station[] {
+  if (!_crCapital) _crCapital = getStationList().filter(s => s.isCapital);
+  return _crCapital;
+}
+function getCRMountainous(): Station[] {
+  if (!_crMountainous) _crMountainous = getStationList().filter(s => s.isMountainous);
+  return _crMountainous;
+}
+
+/** Eliminate countries where NO station satisfies predicate `hiderHasIt=true`
+ *  or ALL stations satisfy predicate when `hiderHasIt=false` */
+function eliminateCountriesByStation(
+  eliminated: Set<string>,
+  predicate: (s: Station) => boolean,
+  hiderHasIt: boolean,
+): void {
+  const byCountry = getStationsByCountry();
+  for (const [country, stations] of Object.entries(byCountry)) {
+    const iso = COUNTRY_TO_ISO3[country];
+    if (!iso) continue;
+    if (hiderHasIt) {
+      // Hider's station has the property → eliminate countries where NO station has it
+      if (!stations.some(predicate)) eliminated.add(iso);
+    } else {
+      // Hider's station lacks the property → eliminate countries where ALL stations have it
+      if (stations.every(predicate)) eliminated.add(iso);
+    }
+  }
+}
+
+/** Eliminate countries based on country-level data (landlocked, area, F1, beer/wine) */
+function eliminateCountriesByData(
+  eliminated: Set<string>,
+  predicate: (ci: CountryInfo) => boolean,
+  hiderMatches: boolean,
+): void {
+  for (const [country, ci] of Object.entries(COUNTRY_DATA)) {
+    const iso = COUNTRY_TO_ISO3[country];
+    if (!iso) continue;
+    if (hiderMatches && !predicate(ci)) eliminated.add(iso);
+    if (!hiderMatches && predicate(ci)) eliminated.add(iso);
+  }
+}
+
 /** Parse a TextConstraint label like "In France" or "Not in France" and return the country name, or null */
 function parseCountryConstraint(c: TextConstraint): { country: string; negated: boolean } | null {
   const notMatch = c.label.match(/^Not in (.+)$/);
@@ -140,17 +208,144 @@ function getEliminatedIsoCodes(constraints: Constraint[]): string[] {
 
   for (const c of constraints) {
     if (c.type !== 'text') continue;
-    const parsed = parseCountryConstraint(c);
-    if (!parsed) continue;
 
-    const iso = COUNTRY_TO_ISO3[parsed.country];
-    if (parsed.negated) {
-      // "Not in X" → X is eliminated
-      eliminated.add(iso);
-    } else {
-      // "In X" → all OTHER game countries are eliminated
-      for (const code of ALL_GAME_ISOS) {
-        if (code !== iso) eliminated.add(code);
+    // "In X" / "Not in X" country constraints
+    const parsed = parseCountryConstraint(c);
+    if (parsed) {
+      const iso = COUNTRY_TO_ISO3[parsed.country];
+      if (parsed.negated) {
+        eliminated.add(iso);
+      } else {
+        for (const code of ALL_GAME_ISOS) {
+          if (code !== iso) eliminated.add(code);
+        }
+      }
+      continue;
+    }
+
+    // Country-level property constraints
+    switch (c.label) {
+      case 'Landlocked country':
+        eliminateCountriesByData(eliminated, ci => ci.landlocked, c.value === 'Yes');
+        break;
+      case 'Large country (>200k km²)':
+        eliminateCountriesByData(eliminated, ci => ci.areaOver200k, c.value === 'Yes');
+        break;
+      case 'Country has F1 circuit':
+        eliminateCountriesByData(eliminated, ci => ci.hasF1Circuit, c.value === 'Yes');
+        break;
+      case 'Beer country':
+        // Hider is in a beer country → eliminate wine countries
+        eliminateCountriesByData(eliminated, ci => ci.beerOrWine === 'beer', true);
+        break;
+      case 'Wine country':
+        // Hider is in a wine country → eliminate beer countries
+        eliminateCountriesByData(eliminated, ci => ci.beerOrWine === 'wine', true);
+        break;
+
+      // Station-level property constraints
+      case 'Coastal station':
+        eliminateCountriesByStation(eliminated, s => s.isCoastal, c.value === 'Yes');
+        break;
+      case 'Mountainous region':
+        eliminateCountriesByStation(eliminated, s => s.isMountainous, c.value === 'Yes');
+        break;
+      case 'Capital city':
+        eliminateCountriesByStation(eliminated, s => s.isCapital, c.value === 'Yes');
+        break;
+      case 'Olympic host city':
+        eliminateCountriesByStation(eliminated, s => s.hasHostedOlympics, c.value === 'Yes');
+        break;
+      case 'Ancient city (>2000 years)':
+        eliminateCountriesByStation(eliminated, s => s.isAncient, c.value === 'Yes');
+        break;
+      case 'City has metro':
+        eliminateCountriesByStation(eliminated, s => s.hasMetro, c.value === 'Yes');
+        break;
+      case 'Hub station (4+ connections)':
+        eliminateCountriesByStation(eliminated, s => s.connections >= 4, c.value === 'Yes');
+        break;
+      case 'Station name A–M': {
+        const isAM = (s: Station) => {
+          const ch = s.name[0].toUpperCase();
+          return ch >= 'A' && ch <= 'M';
+        };
+        eliminateCountriesByStation(eliminated, isAM, c.value === 'Yes');
+        break;
+      }
+
+      // Thermometer constraints
+      case 'Hider nearer to coast': {
+        const threshold = parseFloat(c.value);
+        const byCountry = getStationsByCountry();
+        const coastal = getCRCoastal();
+        for (const [country, stations] of Object.entries(byCountry)) {
+          const iso = COUNTRY_TO_ISO3[country];
+          if (!iso) continue;
+          if (!stations.some(s => nearestStationDistance(s, coastal) < threshold))
+            eliminated.add(iso);
+        }
+        break;
+      }
+      case 'Hider further from coast': {
+        const threshold = parseFloat(c.value);
+        const byCountry = getStationsByCountry();
+        const coastal = getCRCoastal();
+        for (const [country, stations] of Object.entries(byCountry)) {
+          const iso = COUNTRY_TO_ISO3[country];
+          if (!iso) continue;
+          if (!stations.some(s => nearestStationDistance(s, coastal) >= threshold))
+            eliminated.add(iso);
+        }
+        break;
+      }
+      case 'Hider nearer to capital': {
+        const threshold = parseFloat(c.value);
+        const byCountry = getStationsByCountry();
+        const capitals = getCRCapital();
+        for (const [country, stations] of Object.entries(byCountry)) {
+          const iso = COUNTRY_TO_ISO3[country];
+          if (!iso) continue;
+          if (!stations.some(s => nearestStationDistance(s, capitals) < threshold))
+            eliminated.add(iso);
+        }
+        break;
+      }
+      case 'Hider further from capital': {
+        const threshold = parseFloat(c.value);
+        const byCountry = getStationsByCountry();
+        const capitals = getCRCapital();
+        for (const [country, stations] of Object.entries(byCountry)) {
+          const iso = COUNTRY_TO_ISO3[country];
+          if (!iso) continue;
+          if (!stations.some(s => nearestStationDistance(s, capitals) >= threshold))
+            eliminated.add(iso);
+        }
+        break;
+      }
+      case 'Hider nearer to mountains': {
+        const threshold = parseFloat(c.value);
+        const byCountry = getStationsByCountry();
+        const mountains = getCRMountainous();
+        for (const [country, stations] of Object.entries(byCountry)) {
+          const iso = COUNTRY_TO_ISO3[country];
+          if (!iso) continue;
+          if (!stations.some(s => nearestStationDistance(s, mountains) < threshold))
+            eliminated.add(iso);
+        }
+        break;
+      }
+      case 'Hider further from mountains': {
+        const threshold = parseFloat(c.value);
+        const byCountry = getStationsByCountry();
+        const mountains = getCRMountainous();
+        for (const [country, stations] of Object.entries(byCountry)) {
+          const iso = COUNTRY_TO_ISO3[country];
+          if (!iso) continue;
+          if (!stations.some(s => nearestStationDistance(s, mountains) >= threshold))
+            eliminated.add(iso);
+        }
+        break;
       }
     }
   }

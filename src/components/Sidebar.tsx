@@ -65,10 +65,7 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
   if (playerRole === 'seeker' && phase === 'seeking') {
     const candidates = Object.entries(stations).filter(([id, st]) =>
       !visitedStations.has(id) &&
-      stationMatchesConstraints(
-        { lat: st.lat, lng: st.lng, name: st.name, country: st.country, connections: st.connections },
-        constraints,
-      ),
+      stationMatchesConstraints(st, constraints),
     );
     const candidateCount = candidates.length;
 

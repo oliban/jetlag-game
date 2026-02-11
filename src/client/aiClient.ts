@@ -109,7 +109,7 @@ export function getToolDefinitions(): AnthropicToolDefinition[] {
           question_id: {
             type: 'string',
             description:
-              'The ID of the question to ask. All answers are Yes or No. Options: radar-100, radar-200, radar-500 (is hider within X km?), rel-north (is hider north of you?), rel-east (is hider east of you?), prec-same-country (is hider in same country as you?), prec-hub (does hider station have 4+ connections?), prec-name-am (does station name start with A–M?).',
+              'The ID of the question to ask. Options: radar-100, radar-200, radar-500 (is hider within X km? Answer: Yes/No), rel-north, rel-east (directional, Yes/No), prec-same-country (same country? Yes/No), prec-hub (4+ connections? Yes/No), prec-name-am (name A–M? Yes/No), prec-coastal (within 50km of coast? Yes/No), prec-mountain (mountainous region? Yes/No), prec-capital (capital city? Yes/No), prec-landlocked (landlocked country? Yes/No), prec-country-area (country >200k km²? Yes/No), prec-olympic (hosted Olympics? Yes/No), prec-beer-wine (beer or wine country? Answer: "Beer" or "Wine"), prec-ancient (city >2000 years old? Yes/No), prec-f1 (country has F1 circuit? Yes/No), prec-metro (city has metro? Yes/No), thermo-coast (hider nearer to coastline than you? Yes/No), thermo-capital (hider nearer to a capital than you? Yes/No), thermo-mountain (hider nearer to mountains than you? Yes/No).',
           },
         },
         required: ['question_id'],

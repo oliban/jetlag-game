@@ -70,7 +70,7 @@ Plan your questions carefully — spend cheap radar questions early to narrow th
 3. **ask_question** - Ask a yes/no question about the hider's location. Costs coins. Categories:
    - **Radar** (radar-100, radar-200, radar-500): "Is the hider within X km of me?" Creates a circle constraint. Cost: 1 coin.
    - **Relative** (rel-north, rel-east): "Is the hider north/east of me?" Creates a half-plane constraint. Cost: 2 coins.
-   - **Precision** (prec-same-country, prec-hub, prec-name-am): Yes/no facts about the hider's station. Cost: 3 coins.
+   - **Precision**: Yes/no facts about the hider's station. Cost: 3 coins. IDs: prec-same-country, prec-hub, prec-name-am, prec-coastal, prec-mountain, prec-capital, prec-landlocked, prec-country-area, prec-olympic, prec-beer-wine (answers "Beer"/"Wine"), prec-ancient, prec-f1, prec-metro, thermo-coast (hider nearer to coast than you?), thermo-capital (hider nearer to capital?), thermo-mountain (hider nearer to mountains?).
    - Each category has a 30 game-minute cooldown after use.
 4. **travel_to** - Move to an adjacent station. You must wait for the next train and travel takes time.
 
@@ -105,7 +105,7 @@ You have very few coins and very few questions. Every question must COUNT. Follo
 - Each question can only be asked once — don't waste radar questions when the answer is already known from geometry.
 
 ## IMPORTANT
-- All question answers are Yes or No. Each question can only be asked ONCE per game.
+- All question answers are Yes or No (except prec-beer-wine which answers "Beer" or "Wine"). Each question can only be asked ONCE per game.
 - You can call travel_to MULTIPLE TIMES to plan a multi-hop route. All hops execute as a queue without stopping. Plan 2-4 hops toward candidates in one turn.
 - NEVER revisit a station. Once visited, the hider is confirmed NOT there. Always move to unvisited candidates.
 - Think about geography: use latitude/longitude constraints to determine direction, then travel that way.

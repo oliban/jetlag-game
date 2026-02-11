@@ -40,10 +40,7 @@ function MobileStatusBar() {
   if (isSeeker) {
     candidateCount = Object.entries(stations).filter(([id, st]) =>
       !visitedStations.has(id) &&
-      stationMatchesConstraints(
-        { lat: st.lat, lng: st.lng, name: st.name, country: st.country, connections: st.connections },
-        constraints,
-      ),
+      stationMatchesConstraints(st, constraints),
     ).length;
   }
 

@@ -1,5 +1,6 @@
 import type { Constraint } from './constraints.ts';
 import { haversineDistance } from './geo.ts';
+import { nearestStationDistance } from '../questions/evaluators.ts';
 // SeekerViewState type used for runtime structure only
 import type {
   SeekerAction,
@@ -26,17 +27,39 @@ import {
   type CooldownTracker,
 } from '../questions/cooldown.ts';
 import { getStations, getNeighbors } from '../data/graph.ts';
+import { COUNTRY_DATA } from '../data/countryData.ts';
 import { checkWinCondition, checkTimeLimit } from './seekingPhase.ts';
 import { logger } from './logger.ts';
 import { canAfford, spendCoins, getCost, type CoinBudget } from './coinSystem.ts';
 import { getTravelInfo } from './trainSchedule.ts';
+
+// Cached filtered station lists for thermometer constraint matching
+import { getStationList } from '../data/graph.ts';
+import type { Station } from '../types/game.ts';
+let _cachedCoastal: Station[] | null = null;
+let _cachedCapital: Station[] | null = null;
+let _cachedMountainous: Station[] | null = null;
+function getCachedCoastal(): Station[] {
+  if (!_cachedCoastal) _cachedCoastal = getStationList().filter(s => s.isCoastal);
+  return _cachedCoastal;
+}
+function getCachedCapital(): Station[] {
+  if (!_cachedCapital) _cachedCapital = getStationList().filter(s => s.isCapital);
+  return _cachedCapital;
+}
+function getCachedMountainous(): Station[] {
+  if (!_cachedMountainous) _cachedMountainous = getStationList().filter(s => s.isMountainous);
+  return _cachedMountainous;
+}
 
 const MAX_INFO_ROUNDS = 4;    // rounds where AI only gathers info (get_my_state, get_available_questions)
 const MAX_TOTAL_ROUNDS = 12;  // hard safety cap
 
 /** Check if a station satisfies all geometric constraints */
 export function stationMatchesConstraints(
-  station: { lat: number; lng: number; name: string; country: string; connections: number },
+  station: { lat: number; lng: number; name: string; country: string; connections: number;
+    isCoastal: boolean; isMountainous: boolean; isCapital: boolean;
+    hasHostedOlympics: boolean; isAncient: boolean; hasMetro: boolean },
   allConstraints: Constraint[],
 ): boolean {
   for (const c of allConstraints) {
@@ -64,6 +87,84 @@ export function stationMatchesConstraints(
         const isAM = first >= 'A' && first <= 'M';
         if (c.value === 'Yes' && !isAM) return false;
         if (c.value === 'No' && isAM) return false;
+      }
+      if (c.label === 'Coastal station') {
+        if (c.value === 'Yes' && !station.isCoastal) return false;
+        if (c.value === 'No' && station.isCoastal) return false;
+      }
+      if (c.label === 'Mountainous region') {
+        if (c.value === 'Yes' && !station.isMountainous) return false;
+        if (c.value === 'No' && station.isMountainous) return false;
+      }
+      if (c.label === 'Capital city') {
+        if (c.value === 'Yes' && !station.isCapital) return false;
+        if (c.value === 'No' && station.isCapital) return false;
+      }
+      if (c.label === 'Landlocked country') {
+        const ci = COUNTRY_DATA[station.country];
+        if (c.value === 'Yes' && !ci?.landlocked) return false;
+        if (c.value === 'No' && ci?.landlocked) return false;
+      }
+      if (c.label === 'Large country (>200k km²)') {
+        const ci = COUNTRY_DATA[station.country];
+        if (c.value === 'Yes' && !ci?.areaOver200k) return false;
+        if (c.value === 'No' && ci?.areaOver200k) return false;
+      }
+      if (c.label === 'Olympic host city') {
+        if (c.value === 'Yes' && !station.hasHostedOlympics) return false;
+        if (c.value === 'No' && station.hasHostedOlympics) return false;
+      }
+      if (c.label === 'Beer country') {
+        const ci = COUNTRY_DATA[station.country];
+        if (ci?.beerOrWine !== 'beer') return false;
+      }
+      if (c.label === 'Wine country') {
+        const ci = COUNTRY_DATA[station.country];
+        if (ci?.beerOrWine !== 'wine') return false;
+      }
+      if (c.label === 'Ancient city (>2000 years)') {
+        if (c.value === 'Yes' && !station.isAncient) return false;
+        if (c.value === 'No' && station.isAncient) return false;
+      }
+      if (c.label === 'Country has F1 circuit') {
+        const ci = COUNTRY_DATA[station.country];
+        if (c.value === 'Yes' && !ci?.hasF1Circuit) return false;
+        if (c.value === 'No' && ci?.hasF1Circuit) return false;
+      }
+      if (c.label === 'City has metro') {
+        if (c.value === 'Yes' && !station.hasMetro) return false;
+        if (c.value === 'No' && station.hasMetro) return false;
+      }
+      // Thermometer constraints: filter stations by distance threshold
+      if (c.label === 'Hider nearer to coast') {
+        const threshold = parseFloat(c.value);
+        const coastDist = nearestStationDistance(station, getCachedCoastal());
+        if (coastDist >= threshold) return false;
+      }
+      if (c.label === 'Hider further from coast') {
+        const threshold = parseFloat(c.value);
+        const coastDist = nearestStationDistance(station, getCachedCoastal());
+        if (coastDist < threshold) return false;
+      }
+      if (c.label === 'Hider nearer to capital') {
+        const threshold = parseFloat(c.value);
+        const capDist = nearestStationDistance(station, getCachedCapital());
+        if (capDist >= threshold) return false;
+      }
+      if (c.label === 'Hider further from capital') {
+        const threshold = parseFloat(c.value);
+        const capDist = nearestStationDistance(station, getCachedCapital());
+        if (capDist < threshold) return false;
+      }
+      if (c.label === 'Hider nearer to mountains') {
+        const threshold = parseFloat(c.value);
+        const mtnDist = nearestStationDistance(station, getCachedMountainous());
+        if (mtnDist >= threshold) return false;
+      }
+      if (c.label === 'Hider further from mountains') {
+        const threshold = parseFloat(c.value);
+        const mtnDist = nearestStationDistance(station, getCachedMountainous());
+        if (mtnDist < threshold) return false;
       }
     }
   }
