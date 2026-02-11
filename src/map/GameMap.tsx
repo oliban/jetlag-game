@@ -88,7 +88,7 @@ export default function GameMap() {
         ],
         paint: {
           'fill-color': countryFillMatchExpression(),
-          'fill-opacity': 0.15,
+          'fill-opacity': 0.30,
         },
       });
 
@@ -104,8 +104,8 @@ export default function GameMap() {
         ],
         paint: {
           'line-color': countryBorderMatchExpression(),
-          'line-opacity': 0.3,
-          'line-width': 1,
+          'line-opacity': 0.5,
+          'line-width': 1.5,
         },
       });
 

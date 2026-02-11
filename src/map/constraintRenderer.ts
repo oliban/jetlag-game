@@ -392,8 +392,8 @@ function renderCountryConstraints(map: mapboxgl.Map, eliminatedCodes: string[]):
         ['match', ['get', 'iso_3166_1_alpha_3'], eliminatedCodes, true, false],
       ],
       paint: {
-        'fill-color': '#ef4444',
-        'fill-opacity': 0.25,
+        'fill-color': '#1a0000',
+        'fill-opacity': 0.7,
       },
     },
     beforeLayer,
@@ -449,8 +449,8 @@ export function renderConstraints(
         type: 'fill',
         source: fillId,
         paint: {
-          'fill-color': '#ef4444',
-          'fill-opacity': 0.25,
+          'fill-color': '#1a0000',
+          'fill-opacity': 0.55,
         },
       });
 
@@ -486,8 +486,8 @@ export function renderConstraints(
         type: 'fill',
         source: fillId,
         paint: {
-          'fill-color': '#ef4444',
-          'fill-opacity': 0.25,
+          'fill-color': '#1a0000',
+          'fill-opacity': 0.55,
         },
       });
 
