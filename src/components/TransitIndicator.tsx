@@ -6,6 +6,8 @@ import { formatDuration, formatGameTime } from '../engine/gameLoop';
 import { getStations } from '../data/graph';
 import { useGameStore } from '../store/gameStore';
 
+const shortName = (name: string) => name.replace('Hauptbahnhof', 'Hbf');
+
 const TRAIN_TYPE_COLORS: Record<string, string> = {
   express: 'text-yellow-400',
   regional: 'text-blue-400',
@@ -83,31 +85,31 @@ export default function TransitIndicator({
   const trainRoute = playerTransit.routeId ? getRoutes().find(r => r.id === playerTransit.routeId) : undefined;
 
   return (
-    <div className={`${bgClass} border rounded p-2 mb-3`}>
-      <p className={`text-xs font-medium ${labelClass}`}>
-        {label}
+    <div className={`${bgClass} border rounded px-2 py-1.5 mb-2`}>
+      {/* Row 1: label + route/operator inline */}
+      <div className="flex items-baseline gap-1.5 flex-wrap">
+        <span className={`text-xs font-medium leading-none ${labelClass}`}>{label}</span>
+        {trainRoute && (
+          <span className="text-[10px] text-gray-500 leading-none">
+            <span className="font-mono text-gray-300">{trainRoute.id}</span>
+            <span className="mx-0.5">·</span>
+            <span>{trainRoute.operator}</span>
+          </span>
+        )}
+      </div>
+      {/* Row 2: next station + terminus inline */}
+      <p className="text-[11px] text-gray-300 leading-tight mt-0.5">
+        {exiting ? 'Off at: ' : 'Next: '}
+        {shortName(stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId)}
+        {!exiting && playerTransit.destinationStationId && playerTransit.destinationStationId !== playerTransit.toStationId && (
+          <span className="text-gray-500"> · dest {shortName(stations[playerTransit.destinationStationId]?.name ?? playerTransit.destinationStationId)}</span>
+        )}
+        {trainTerminus && trainTerminus !== playerTransit.destinationStationId && (
+          <span className="text-gray-500"> · term {shortName(stations[trainTerminus]?.name ?? trainTerminus)}</span>
+        )}
       </p>
-      {trainRoute && (
-        <p className="text-xs text-gray-500">
-          <span className="font-mono text-gray-300">{trainRoute.id}</span>
-          <span className="mx-1">·</span>
-          <span className="text-gray-400">{trainRoute.operator}</span>
-        </p>
-      )}
-      <p className="text-xs text-gray-300">
-        {exiting ? 'Getting off at: ' : 'Next: '}{stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}
-      </p>
-      {!exiting && playerTransit.destinationStationId && playerTransit.destinationStationId !== playerTransit.toStationId && (
-        <p className="text-xs text-gray-500">
-          Destination: {stations[playerTransit.destinationStationId]?.name ?? playerTransit.destinationStationId}
-        </p>
-      )}
-      {trainTerminus && trainTerminus !== playerTransit.destinationStationId && (
-        <p className="text-xs text-gray-500">
-          Train terminates: {stations[trainTerminus]?.name ?? trainTerminus}
-        </p>
-      )}
-      <p className="text-xs text-gray-400">
+      {/* Row 3: type + timing */}
+      <p className="text-[10px] text-gray-400 leading-tight">
         <span className={TRAIN_TYPE_COLORS[playerTransit.trainType]}>{playerTransit.trainType}</span>
         {waiting
           ? <>{' '}— Departs in {formatDuration(waitLeft)}, then {formatDuration(travelLeft)} travel</>
@@ -131,7 +133,7 @@ export default function TransitIndicator({
           onClick={getOffAtNextStation}
           className={`mt-1.5 w-full px-2 ${btnPy} text-xs font-medium text-red-400 bg-red-900/30 hover:bg-red-900/50 active:bg-red-900/50 border border-red-700/50 rounded transition-colors`}
         >
-          {isDwelling ? 'Get off now!' : `Get off at ${stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId}`}
+          {isDwelling ? 'Get off now!' : `Get off at ${shortName(stations[playerTransit.toStationId]?.name ?? playerTransit.toStationId)}`}
         </button>
       )}
       {canStay && (
@@ -146,7 +148,7 @@ export default function TransitIndicator({
       {queuedRoute && (() => {
         const qRoute = getRoutes().find(r => r.id === queuedRoute.routeId);
         const stationMap = getStations();
-        const destName = stationMap[queuedRoute.destinationStationId]?.name ?? queuedRoute.destinationStationId;
+        const destName = shortName(stationMap[queuedRoute.destinationStationId]?.name ?? queuedRoute.destinationStationId);
         return (
           <div className="mt-2 pt-2 border-t border-gray-700/50">
             <p className="text-[10px] text-purple-400 uppercase tracking-wide font-medium">Queued Connection</p>
@@ -166,7 +168,7 @@ export default function TransitIndicator({
       {/* Missed connection animation */}
       {missedRoute && (() => {
         const stationMap = getStations();
-        const destName = stationMap[missedRoute.destinationStationId]?.name ?? missedRoute.destinationStationId;
+        const destName = shortName(stationMap[missedRoute.destinationStationId]?.name ?? missedRoute.destinationStationId);
         return (
           <div className="mt-2 pt-2 border-t border-gray-700/50 animate-pulse">
             <p className="text-[10px] text-red-400 uppercase tracking-wide font-bold">
