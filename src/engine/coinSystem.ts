@@ -37,3 +37,22 @@ export function spendCoins(budget: CoinBudget, category: QuestionCategory): Coin
     remaining: budget.remaining - cost,
   };
 }
+
+export function earnCoins(budget: CoinBudget, amount: number): CoinBudget {
+  return {
+    total: budget.total + amount,
+    spent: budget.spent,
+    remaining: budget.remaining + amount,
+  };
+}
+
+export function spendCoinsDirect(budget: CoinBudget, amount: number): CoinBudget {
+  if (budget.remaining < amount) {
+    throw new Error(`Cannot afford (cost=${amount}, remaining=${budget.remaining})`);
+  }
+  return {
+    total: budget.total,
+    spent: budget.spent + amount,
+    remaining: budget.remaining - amount,
+  };
+}

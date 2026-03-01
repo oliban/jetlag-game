@@ -7,6 +7,7 @@ import { stationMatchesConstraints } from '../engine/seekerLoop';
 import { canAfford, getCost } from '../engine/coinSystem';
 import TransitIndicator from './TransitIndicator';
 import { formatDuration } from '../engine/gameLoop';
+import QuizTab from './QuizTab';
 
 const CATEGORY_STYLE: Record<string, { color: string; dim: string; border: string; bg: string }> = {
   radar:     { color: 'text-green-400',  dim: 'text-green-400/60',  border: 'border-green-700/50', bg: 'bg-green-900/20' },
@@ -356,8 +357,9 @@ export default function Sidebar() {
   const isSeeker = playerRole === 'seeker' && phase === 'seeking';
 
   return (
-    <div className={`hidden md:block absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] ${isSeeker ? 'max-h-[80vh] overflow-y-auto' : ''}`}>
+    <div className={`hidden md:block absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh] overflow-y-auto`}>
       <SidebarContent />
+      <QuizTab />
     </div>
   );
 }

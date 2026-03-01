@@ -3,6 +3,8 @@ import {
   createCoinBudget,
   canAfford,
   spendCoins,
+  earnCoins,
+  spendCoinsDirect,
   getCost,
   STARTING_COINS,
   QUESTION_COSTS,
@@ -63,5 +65,26 @@ describe('coinSystem', () => {
     budget = spendCoins(budget, 'precision'); // cost 3
     expect(budget.remaining).toBe(0);
     expect(canAfford(budget, 'radar')).toBe(false);
+  });
+
+  it('earnCoins increases total and remaining', () => {
+    let budget = createCoinBudget(10);
+    budget = spendCoins(budget, 'radar'); // spend 1
+    budget = earnCoins(budget, 3);
+    expect(budget.total).toBe(13);
+    expect(budget.remaining).toBe(12);
+    expect(budget.spent).toBe(1);
+  });
+
+  it('spendCoinsDirect deducts by amount', () => {
+    let budget = createCoinBudget(10);
+    budget = spendCoinsDirect(budget, 1);
+    expect(budget.remaining).toBe(9);
+    expect(budget.spent).toBe(1);
+  });
+
+  it('spendCoinsDirect throws when insufficient', () => {
+    const budget = createCoinBudget(0);
+    expect(() => spendCoinsDirect(budget, 1)).toThrow('Cannot afford');
   });
 });

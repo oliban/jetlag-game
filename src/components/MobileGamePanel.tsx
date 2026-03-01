@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SidebarContent } from './Sidebar';
 import { DepartureBoardMobile } from './DepartureBoardModal';
 import TransitIndicator from './TransitIndicator';
+import QuizTab from './QuizTab';
 import { useGameStore } from '../store/gameStore';
 import { getStations } from '../data/graph';
 import { stationMatchesConstraints } from '../engine/seekerLoop';
@@ -105,41 +106,44 @@ function MobileStatusBar() {
 }
 
 export default function MobileGamePanel() {
-  const [tab, setTab] = useState<'departures' | 'game'>('departures');
+  const [tab, setTab] = useState<'departures' | 'game' | 'quiz'>('departures');
+
+  const tabs: { id: 'departures' | 'game' | 'quiz'; label: string }[] = [
+    { id: 'departures', label: 'Departures' },
+    { id: 'game', label: 'Questions' },
+    { id: 'quiz', label: 'Quiz' },
+  ];
 
   return (
     <div className="bg-[#0a1a3a] border-t border-[#1a3a6a]/60 text-white safe-bottom flex flex-col flex-1 min-h-0">
       <MobileStatusBar />
 
       <div className="flex shrink-0 border-b border-[#1a3a6a]/40">
-        <button
-          onClick={() => setTab('departures')}
-          className={`flex-1 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
-            tab === 'departures'
-              ? 'text-[#ffbf40] border-b-2 border-[#ffbf40]'
-              : 'text-gray-500 active:text-gray-300'
-          }`}
-        >
-          Departures
-        </button>
-        <button
-          onClick={() => setTab('game')}
-          className={`flex-1 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
-            tab === 'game'
-              ? 'text-[#ffbf40] border-b-2 border-[#ffbf40]'
-              : 'text-gray-500 active:text-gray-300'
-          }`}
-        >
-          Questions
-        </button>
+        {tabs.map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex-1 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+              tab === id
+                ? 'text-[#ffbf40] border-b-2 border-[#ffbf40]'
+                : 'text-gray-500 active:text-gray-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {tab === 'departures' ? (
           <DepartureBoardMobile />
-        ) : (
+        ) : tab === 'game' ? (
           <div className="p-3">
             <SidebarContent mobile />
+          </div>
+        ) : (
+          <div className="p-3">
+            <QuizTab mobile />
           </div>
         )}
       </div>

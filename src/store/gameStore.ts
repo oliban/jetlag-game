@@ -24,7 +24,9 @@ import {
   canAskCategory,
   recordQuestion,
 } from '../questions/cooldown';
-import { createCoinBudget, canAfford, spendCoins, type CoinBudget } from '../engine/coinSystem';
+import { createCoinBudget, canAfford, spendCoins, earnCoins, spendCoinsDirect, type CoinBudget } from '../engine/coinSystem';
+import type { QuizSession } from '../types/quiz';
+import { createQuizSession, calculateCoinsEarned, canTakeQuiz, getCooldownExpiry, QUIZ_COST, QUIZ_QUESTION_COUNT } from '../engine/quizSystem';
 import { getTravelInfo } from '../engine/trainSchedule';
 import { getRoutes, getUpcomingDepartures } from '../engine/trainRoutes';
 import type { ProviderConfig } from '../client/providerAdapter';
@@ -75,6 +77,10 @@ export interface GameStore {
 
   // Coin system
   coinBudget: CoinBudget | null;
+
+  // Quiz system
+  quizSession: QuizSession | null;
+  quizCooldown: number | null;
 
   // Dual seeker / consensus
   seekerMode: SeekerMode;
@@ -128,6 +134,11 @@ export interface GameStore {
   travelViaRoute: (routeId: string, destinationStationId: string, departureTime: number) => void;
   getOffAtNextStation: () => void;
   stayOnTrain: () => void;
+
+  // Quiz actions
+  startQuiz: (questionCount?: number) => Promise<void>;
+  answerQuestion: (displaySlotIndex: number) => void;
+  closeQuiz: () => void;
 }
 
 /**
@@ -201,6 +212,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // Coins
   coinBudget: null,
+
+  // Quiz
+  quizSession: null,
+  quizCooldown: null,
 
   // Dual seeker / consensus
   seekerMode: 'single',
@@ -342,6 +357,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       weatherZones: createInitialWeatherZones(rng),
       delays: new Map(),
       accidents: new Map(),
+      quizSession: null,
+      quizCooldown: null,
     });
   },
 
@@ -927,6 +944,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         weatherZones: [],
         delays: new Map(),
         accidents: new Map(),
+        quizSession: null,
+        quizCooldown: null,
       });
     } else {
       set({ phase: to });
@@ -1021,6 +1040,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Preserve weatherZones from hiding phase, reset delays/accidents
       delays: new Map(),
       accidents: new Map(),
+      quizSession: null,
+      quizCooldown: null,
     });
   },
 
@@ -1552,5 +1573,57 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     logger.info('gameStore', `Staying on train, continuing to terminus: ${terminus}`);
+  },
+
+  startQuiz: async (questionCount = QUIZ_QUESTION_COUNT) => {
+    const state = get();
+    const { coinBudget, playerStationId, playerTransit, quizCooldown, clock } = state;
+    if (!coinBudget || !playerStationId) return;
+    if (coinBudget.remaining < QUIZ_COST) return;
+
+    if (!canTakeQuiz(quizCooldown, clock.gameMinutes)) return;
+
+    // Use departure station if in transit
+    const contextStation = playerTransit ? playerTransit.fromStationId : playerStationId;
+
+    const session = await createQuizSession(contextStation, questionCount);
+    const newBudget = spendCoinsDirect(coinBudget, QUIZ_COST);
+    set({ quizSession: session, coinBudget: newBudget });
+  },
+
+  answerQuestion: (displaySlotIndex: number) => {
+    const { quizSession, coinBudget, clock } = get();
+    if (!quizSession || quizSession.phase !== 'in_progress') return;
+    const { currentIndex, answers } = quizSession;
+    if (answers[currentIndex] !== null) return; // already answered
+
+    const newAnswers = [...answers];
+    newAnswers[currentIndex] = displaySlotIndex;
+
+    const isLast = currentIndex === quizSession.questions.length - 1;
+
+    if (isLast) {
+      // Count correct
+      const correct = newAnswers.filter((a, i) => a === quizSession.shuffledCorrect[i]).length;
+      const coinsEarned = calculateCoinsEarned(correct, quizSession.questions.length);
+      const newBudget = coinBudget ? earnCoins(coinBudget, coinsEarned) : coinBudget;
+
+      // Set cooldown on context station
+      const newCooldown = getCooldownExpiry(clock.gameMinutes);
+
+      set({
+        quizSession: { ...quizSession, answers: newAnswers, phase: 'completed', coinsEarned },
+        coinBudget: newBudget,
+        quizCooldown: newCooldown,
+      });
+    } else {
+      set({
+        quizSession: { ...quizSession, answers: newAnswers, currentIndex: currentIndex + 1 },
+      });
+    }
+  },
+
+  closeQuiz: () => {
+    set({ quizSession: null });
   },
 }));
