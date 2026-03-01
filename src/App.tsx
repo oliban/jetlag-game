@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { Agentation } from 'agentation';
 import GameMap from './map/GameMap';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -155,6 +156,7 @@ function App() {
 
   return (
     <>
+      {import.meta.env.DEV && <Agentation />}
       {/* Desktop layout */}
       <div className="hidden md:block w-full h-screen relative">
         <GameMap />

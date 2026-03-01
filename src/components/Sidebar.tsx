@@ -104,7 +104,7 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
         {/* Coin budget — in status bar on mobile */}
         {!mobile && coinBudget && (
           <div className="text-sm text-[#ffbf40] mb-2">
-            Coins: {coinBudget.remaining}/{coinBudget.total}
+            Coins: {coinBudget.remaining}
           </div>
         )}
 
@@ -276,7 +276,7 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
 
           {coinBudget && (
             <div className="text-xs text-[#ffbf40]">
-              Seeker coins: {coinBudget.remaining}/{coinBudget.total}
+              Seeker coins: {coinBudget.remaining}
             </div>
           )}
 
@@ -354,9 +354,13 @@ export default function Sidebar() {
   if (phase === 'setup' || !playerStationId) return null;
 
   return (
-    <div className={`hidden md:block absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh] overflow-y-auto`}>
-      <SidebarContent />
-      <QuizTab />
+    <div className="hidden md:flex flex-col absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh]">
+      <div className="overflow-y-auto p-3 min-h-0 flex-1">
+        <SidebarContent />
+      </div>
+      <div className="border-t border-[#1a3a6a]/40 p-3 shrink-0">
+        <QuizTab />
+      </div>
     </div>
   );
 }

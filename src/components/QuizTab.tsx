@@ -3,42 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import { getStations } from '../data/graph';
 import { canTakeQuiz, formatCooldownRemaining, QUIZ_COOLDOWN_MINUTES, QUIZ_COST } from '../engine/quizSystem';
 
-const SCORE_TABLES: Record<5 | 10, { label: string; coins: number }[]> = {
-  5: [
-    { label: '5/5', coins: 3 },
-    { label: '4/5', coins: 2 },
-    { label: '3/5', coins: 1 },
-    { label: '< 3/5', coins: 0 },
-  ],
-  10: [
-    { label: '10/10', coins: 5 },
-    { label: '9/10', coins: 3 },
-    { label: '8/10', coins: 2 },
-    { label: '7/10', coins: 1 },
-    { label: '< 7/10', coins: 0 },
-  ],
-};
 
-function ScoreInfo({ count }: { count: 5 | 10 }) {
-  const table = SCORE_TABLES[count];
-  return (
-    <div className="mt-2 rounded border border-[#1a3a6a]/40 overflow-hidden text-xs">
-      <div className="grid grid-cols-2 bg-[#0d2040]/60 px-2 py-1 text-gray-400 font-semibold">
-        <span>Score</span><span className="text-right">Reward</span>
-      </div>
-      {table.map(({ label, coins }) => {
-        return (
-          <div key={label} className="grid grid-cols-2 px-2 py-0.5 border-t border-[#1a3a6a]/30">
-            <span className="text-gray-300">{label}</span>
-            <span className={`text-right font-bold ${coins > 0 ? 'text-[#ffbf40]' : 'text-gray-500'}`}>
-              {coins > 0 ? `+${coins} coin${coins !== 1 ? 's' : ''}` : 'No reward'}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function QuizTab({ mobile = false }: { mobile?: boolean }) {
   const phase = useGameStore((s) => s.phase);
@@ -100,7 +65,6 @@ export default function QuizTab({ mobile = false }: { mobile?: boolean }) {
           </p>
           <p className="text-[10px] text-gray-500 mt-1">Cooldown: {QUIZ_COOLDOWN_MINUTES / 60}h</p>
         </div>
-        <ScoreInfo count={selectedCount} />
       </div>
     );
   }
@@ -150,8 +114,6 @@ export default function QuizTab({ mobile = false }: { mobile?: boolean }) {
       >
         {canAffordQuiz ? `Take Quiz (${QUIZ_COST} coin)` : `Need ${QUIZ_COST} coin to start`}
       </button>
-
-      <ScoreInfo count={selectedCount} />
     </div>
   );
 }

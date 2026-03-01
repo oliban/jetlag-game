@@ -37,7 +37,7 @@ export default function Header() {
       <div className="flex items-center gap-2 md:gap-4">
         {coinBudget && (
           <span className="hidden md:inline font-mono text-xs md:text-sm text-[#ffbf40]">
-            Coins: {coinBudget.remaining}/{coinBudget.total}
+            Coins: {coinBudget.remaining}
           </span>
         )}
 
