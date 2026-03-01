@@ -115,7 +115,7 @@ export default function MobileGamePanel() {
   ];
 
   return (
-    <div className="bg-[#0a1a3a] border-t border-[#1a3a6a]/60 text-white safe-bottom flex flex-col flex-1 min-h-0">
+    <div className="bg-[#0a1a3a] border-t border-[#1a3a6a]/60 text-white flex flex-col flex-1 min-h-0">
       <MobileStatusBar />
 
       <div className="flex shrink-0 border-b border-[#1a3a6a]/40">
@@ -134,7 +134,7 @@ export default function MobileGamePanel() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain safe-bottom" style={{ WebkitOverflowScrolling: 'touch' }}>
         {tab === 'departures' ? (
           <DepartureBoardMobile />
         ) : tab === 'game' ? (
