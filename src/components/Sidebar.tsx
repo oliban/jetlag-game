@@ -349,12 +349,9 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
 
 export default function Sidebar() {
   const phase = useGameStore((s) => s.phase);
-  const playerRole = useGameStore((s) => s.playerRole);
   const playerStationId = useGameStore((s) => s.playerStationId);
 
   if (phase === 'setup' || !playerStationId) return null;
-
-  const isSeeker = playerRole === 'seeker' && phase === 'seeking';
 
   return (
     <div className={`hidden md:block absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white p-3 rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh] overflow-y-auto`}>

@@ -11,7 +11,7 @@ let quizDataCache: { stations: Record<string, QuizQuestion[]>; countries: Record
 async function getQuizData() {
   if (!quizDataCache) {
     const data = await import('../data/quizQuestions.json');
-    quizDataCache = data.default as { stations: Record<string, QuizQuestion[]>; countries: Record<string, QuizQuestion[]> };
+    quizDataCache = data.default as unknown as { stations: Record<string, QuizQuestion[]>; countries: Record<string, QuizQuestion[]> };
   }
   return quizDataCache;
 }
