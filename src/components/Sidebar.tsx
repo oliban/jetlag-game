@@ -26,6 +26,112 @@ const QUESTION_ICONS: Record<string, string> = {
   'prec-name-am': 'Aa',
 };
 
+export function SidebarHeader({ mobile = false }: { mobile?: boolean }) {
+  const phase = useGameStore((s) => s.phase);
+  const playerRole = useGameStore((s) => s.playerRole);
+  const playerStationId = useGameStore((s) => s.playerStationId);
+  const settleHere = useGameStore((s) => s.settleHere);
+  const startSeeking = useGameStore((s) => s.startSeeking);
+  const clock = useGameStore((s) => s.clock);
+  const coinBudget = useGameStore((s) => s.coinBudget);
+  const playerTransit = useGameStore((s) => s.playerTransit);
+  const constraints = useGameStore((s) => s.constraints);
+  const visitedStations = useGameStore((s) => s.visitedStations);
+  const getOffAtNextStation = useGameStore((s) => s.getOffAtNextStation);
+  const stayOnTrain = useGameStore((s) => s.stayOnTrain);
+  const queuedRoute = useGameStore((s) => s.queuedRoute);
+
+  if (phase === 'setup' || !playerStationId || mobile) return null;
+
+  const stations = getStations();
+  const currentStation = stations[playerStationId];
+
+  if (playerRole === 'seeker' && phase === 'seeking') {
+    const candidates = Object.entries(stations).filter(([id, st]) =>
+      !visitedStations.has(id) && stationMatchesConstraints(st, constraints),
+    );
+    const candidateCount = candidates.length;
+    const inTransit = !!playerTransit;
+
+    return (
+      <>
+        <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
+        <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
+        <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+
+        {inTransit && playerTransit && (
+          <TransitIndicator
+            playerTransit={playerTransit}
+            clock={clock}
+            stations={stations}
+            getOffAtNextStation={getOffAtNextStation}
+            stayOnTrain={stayOnTrain}
+            queuedRoute={queuedRoute}
+          />
+        )}
+
+        {coinBudget && (
+          <div className="text-sm text-[#ffbf40] mb-2">
+            Coins: {coinBudget.remaining}
+          </div>
+        )}
+
+        <div className="text-sm text-cyan-400 mb-3">
+          <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining</p>
+          {candidateCount > 0 && candidateCount < 6 && (
+            <ul className="mt-1 text-xs text-cyan-300/80 space-y-0.5">
+              {candidates.map(([id, st]) => (
+                <li key={id}>• {st.name}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  // Hider mode header
+  return (
+    <>
+      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
+      <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
+      <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+
+      {playerTransit && (
+        <TransitIndicator
+          playerTransit={playerTransit}
+          clock={clock}
+          stations={stations}
+          getOffAtNextStation={getOffAtNextStation}
+          stayOnTrain={stayOnTrain}
+          queuedRoute={queuedRoute}
+        />
+      )}
+
+      {phase === 'hiding' && (() => {
+        const HIDING_TIME_LIMIT = 240;
+        const timeLeft = Math.max(0, Math.ceil(HIDING_TIME_LIMIT - clock.gameMinutes));
+        const onTheTrain = playerTransit && clock.gameMinutes >= playerTransit.departureTime;
+        return (
+          <>
+            <div className="text-sm text-gray-400 mb-2">
+              Time to hide: <span className={`font-mono ${timeLeft <= 30 ? 'text-red-400 font-bold' : 'text-white'}`}>{formatDuration(timeLeft)}</span>
+            </div>
+            {!onTheTrain && (
+              <button
+                onClick={() => { settleHere(); setTimeout(() => startSeeking(), 50); }}
+                className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-500 text-white rounded text-sm font-medium transition-colors shadow-md shadow-emerald-500/20"
+              >
+                Hide Here — Start Seeking
+              </button>
+            )}
+          </>
+        );
+      })()}
+    </>
+  );
+}
+
 export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
   const [previewingRadar, setPreviewingRadar] = useState<string | null>(null);
   const phase = useGameStore((s) => s.phase);
@@ -80,50 +186,45 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
 
     return (
       <>
-        {/* Your Station — shown in MobileStatusBar on mobile */}
-        {!mobile && (
+        {/* Mobile-only: station, transit, coins, candidates (desktop shows these in SidebarHeader) */}
+        {mobile && (
           <>
             <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
             <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
             <p className="text-sm text-gray-400 mb-3">{currentStation?.country}</p>
+
+            {inTransit && playerTransit && (
+              <TransitIndicator
+                playerTransit={playerTransit}
+                clock={clock}
+                stations={stations}
+                getOffAtNextStation={getOffAtNextStation}
+                stayOnTrain={stayOnTrain}
+                queuedRoute={queuedRoute}
+              />
+            )}
+
+            {coinBudget && (
+              <div className="text-sm text-[#ffbf40] mb-2">
+                Coins: {coinBudget.remaining}
+              </div>
+            )}
+
+            <div className="text-sm text-cyan-400 mb-3">
+              <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining</p>
+              {candidateCount > 0 && candidateCount < 6 && (
+                <ul className="mt-1 text-xs text-cyan-300/80 space-y-0.5">
+                  {candidates.map(([id, st]) => (
+                    <li key={id}>• {st.name}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </>
         )}
 
-        {/* Transit indicator — shown in MobileStatusBar on mobile */}
-        {!mobile && inTransit && playerTransit && (
-          <TransitIndicator
-            playerTransit={playerTransit}
-            clock={clock}
-            stations={stations}
-            getOffAtNextStation={getOffAtNextStation}
-            stayOnTrain={stayOnTrain}
-            queuedRoute={queuedRoute}
-          />
-        )}
-
-        {/* Coin budget — in status bar on mobile */}
-        {!mobile && coinBudget && (
-          <div className="text-sm text-[#ffbf40] mb-2">
-            Coins: {coinBudget.remaining}
-          </div>
-        )}
-
-        {/* Candidates — in status bar on mobile */}
-        {!mobile && (
-          <div className="text-sm text-cyan-400 mb-3">
-            <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''} remaining</p>
-            {candidateCount > 0 && candidateCount < 6 && (
-              <ul className="mt-1 text-xs text-cyan-300/80 space-y-0.5">
-                {candidates.map(([id, st]) => (
-                  <li key={id}>• {st.name}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
         {/* Ask Question */}
-        <div className={mobile ? '' : 'border-t border-[#1a3a6a]/40 pt-4 mt-4'}>
+        <div className={mobile ? '' : ''}>
           <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-2">Ask Question</h3>
           <div className="space-y-2">
             {QUESTION_POOL.map((q) => {
@@ -213,11 +314,10 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
     );
   }
 
-  // Hider mode content
+  // Hider mode content (desktop header shown in SidebarHeader; mobile shows everything here)
   return (
     <>
-      {/* Station + transit + hiding time — shown in MobileStatusBar on mobile */}
-      {!mobile && (
+      {mobile && (
         <>
           <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-1">Your Station</h3>
           <p className="font-bold text-[#ffbf40]">{currentStation?.name ?? playerStationId}</p>
@@ -258,7 +358,7 @@ export function SidebarContent({ mobile = false }: { mobile?: boolean }) {
       )}
 
       {phase === 'seeking' && (
-        <div className="border-t border-[#1a3a6a]/40 pt-4 mt-4 space-y-2">
+        <div className="space-y-2">
           <h3 className="text-xs text-gray-400 uppercase tracking-wide">Seeking Phase</h3>
 
           {seekerStation && (
@@ -355,6 +455,9 @@ export default function Sidebar() {
 
   return (
     <div className="hidden md:flex flex-col absolute bottom-4 left-4 z-10 bg-[#0a1a3a]/95 backdrop-blur text-white rounded-lg shadow-xl border border-[#1a3a6a]/60 w-[280px] max-h-[80vh]">
+      <div className="p-3 shrink-0 border-b border-[#1a3a6a]/40">
+        <SidebarHeader />
+      </div>
       <div className="overflow-y-auto p-3 min-h-0 flex-1">
         <SidebarContent />
       </div>

@@ -27,6 +27,7 @@ export default function GameMap() {
   const playerMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const seekerMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const hasInitialPan = useRef(false);
+  const isTouchingRef = useRef(false);
   const [popup, setPopup] = useState<StationPopupInfo | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
 
@@ -555,6 +556,23 @@ export default function GameMap() {
     }
   }, [cameraFollow, mapLoaded]);
 
+  // Track active touches so camera follow doesn't fight pinch-to-zoom
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    const container = map.getContainer();
+    const onTouchStart = () => { isTouchingRef.current = true; };
+    const onTouchEnd = () => { isTouchingRef.current = false; };
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [mapLoaded]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded || !cameraFollow || !playerStationId) return;
@@ -598,7 +616,9 @@ export default function GameMap() {
       }
     }
 
-    map.setCenter(center);
+    if (!isTouchingRef.current) {
+      map.setCenter(center);
+    }
   }, [cameraFollow, playerStationId, playerTransit, clock.gameMinutes, mapLoaded]);
 
   // Highlight adjacent connections (hiding phase + seeker seeking phase when not in transit)
